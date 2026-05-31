@@ -13,11 +13,16 @@ export default async function handler(req, res) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 4000 }
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 4000,
+          responseMimeType: "application/json"
+        }
       })
     });
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (data.error) throw new Error(data.error.message);
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
     res.status(200).json({ text });
   } catch (e) {
     res.status(500).json({ error: e.message });
