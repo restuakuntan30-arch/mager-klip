@@ -73,7 +73,6 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0a0a0a;color:#f0f0f0
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes glow{0%,100%{box-shadow:0 0 20px #c9973355}50%{box-shadow:0 0 40px #c9973388}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-thumb{background:#c9973333;border-radius:6px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -96,26 +95,22 @@ function CopyBtn({ text, label="Copy" }) {
 }
 
 // =====================================================
-// AUTH SCREEN (Email Magic Link)
+// AUTH SCREEN
 // =====================================================
 function AuthScreen() {
   const [email, setEmail] = useState("");
-  const [phase, setPhase] = useState("input"); // input | sending | sent | error
+  const [phase, setPhase] = useState("input");
   const [err, setErr] = useState("");
 
   const handleLogin = async () => {
     if (!email || !email.includes("@")) { setErr("Masukkan email yang valid"); return; }
     setPhase("sending"); setErr("");
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: window.location.origin },
-      });
+      const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
       if (error) throw error;
       setPhase("sent");
     } catch (e) {
-      setErr(e.message || "Gagal mengirim email");
-      setPhase("error");
+      setErr(e.message || "Gagal mengirim email"); setPhase("error");
     }
   };
 
@@ -132,17 +127,13 @@ function AuthScreen() {
         </div>
 
         {phase === "sent" ? (
-          <div style={{textAlign:"center",animation:"fadeUp .3s ease"}}>
+          <div style={{textAlign:"center"}}>
             <div style={{fontSize:48,marginBottom:16}}>📧</div>
             <div style={{fontSize:18,fontWeight:800,marginBottom:8}}>Cek email kamu!</div>
             <div style={{fontSize:13,color:"#777",lineHeight:1.6,marginBottom:20}}>
-              Kami mengirim link login ke<br/>
-              <span style={{color:"#c99733",fontWeight:700}}>{email}</span><br/>
-              Klik link di email untuk masuk.
+              Kami mengirim link login ke<br/><span style={{color:"#c99733",fontWeight:700}}>{email}</span><br/>Klik link di email untuk masuk.
             </div>
-            <button onClick={() => { setPhase("input"); setEmail(""); }} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",color:"#888",borderRadius:8,padding:"8px 16px",fontSize:12,cursor:"pointer"}}>
-              ← Email lain
-            </button>
+            <button onClick={() => { setPhase("input"); setEmail(""); }} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",color:"#888",borderRadius:8,padding:"8px 16px",fontSize:12,cursor:"pointer"}}>← Email lain</button>
           </div>
         ) : (
           <>
@@ -150,29 +141,17 @@ function AuthScreen() {
               <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>Login atau Daftar</div>
               <div style={{fontSize:13,color:"#666"}}>Masuk dengan email — gratis, tanpa password</div>
             </div>
-
             <div style={{marginBottom:14}}>
               <label style={{fontSize:10,color:"#666",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:6,display:"block"}}>Email kamu</label>
-              <input type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(""); }}
-                onKeyDown={e => e.key === "Enter" && handleLogin()}
-                placeholder="nama@email.com"
+              <input type="email" value={email} onChange={e => { setEmail(e.target.value); setErr(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} placeholder="nama@email.com"
                 style={{width:"100%",background:"rgba(255,255,255,.06)",border:`1px solid ${err?"#ef4444":"rgba(255,255,255,.1)"}`,borderRadius:10,padding:"12px 14px",color:"#f0f0f0",fontSize:14}}/>
               {err && <div style={{fontSize:11,color:"#ef4444",marginTop:6}}>{err}</div>}
             </div>
-
             <button onClick={handleLogin} disabled={phase === "sending"}
-              style={{width:"100%",padding:"14px",borderRadius:10,border:"none",cursor:phase==="sending"?"not-allowed":"pointer",
-                background:phase==="sending"?"rgba(201,151,51,.2)":"linear-gradient(135deg,#c99733,#a07828)",
-                color:phase==="sending"?"#c99733":"#000",fontWeight:800,fontSize:14,
-                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-                boxShadow:phase==="sending"?"none":"0 4px 20px rgba(201,151,51,.3)"}}>
+              style={{width:"100%",padding:"14px",borderRadius:10,border:"none",cursor:phase==="sending"?"not-allowed":"pointer",background:phase==="sending"?"rgba(201,151,51,.2)":"linear-gradient(135deg,#c99733,#a07828)",color:phase==="sending"?"#c99733":"#000",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:phase==="sending"?"none":"0 4px 20px rgba(201,151,51,.3)"}}>
               {phase === "sending" ? <><Spinner color="#c99733"/>Mengirim...</> : "✉️ Kirim Link Login"}
             </button>
-
-            <div style={{fontSize:11,color:"#444",textAlign:"center",marginTop:16,lineHeight:1.6}}>
-              Dengan masuk, kamu menyetujui untuk menerima email login.<br/>
-              Tidak ada spam, hanya untuk verifikasi.
-            </div>
+            <div style={{fontSize:11,color:"#444",textAlign:"center",marginTop:16,lineHeight:1.6}}>Tidak ada spam. Email hanya untuk verifikasi login.</div>
           </>
         )}
       </div>
@@ -181,36 +160,84 @@ function AuthScreen() {
 }
 
 // =====================================================
-// DOWNLOAD BUTTON
+// DOWNLOAD BUTTON — Multi-Option (NEW!)
 // =====================================================
 function DownloadBtn({ ytId, startS, endS, dur }) {
-  const [phase, setPhase] = useState("idle");
-  const handleDownload = async () => {
-    setPhase("loading");
-    const ytUrl = `https://www.youtube.com/watch?v=${ytId}&t=${startS}s`;
-    setTimeout(() => { window.open(ytUrl, "_blank"); setPhase("fallback"); }, 600);
-  };
-  const btnBase = {display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:700,fontSize:13,cursor:"pointer",transition:"all .2s"};
+  const [showOpts, setShowOpts] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  if (phase === "idle") return (
-    <button onClick={handleDownload} style={{...btnBase,background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>
-      ⬇️ Buka di Timestamp ({fmtDur(dur)})
-    </button>
-  );
-  if (phase === "loading") return (
-    <div style={{...btnBase,background:"rgba(201,151,51,.1)",border:"1px solid rgba(201,151,51,.3)",color:"#c99733",cursor:"default"}}>
-      <Spinner color="#c99733"/>Membuka...
-    </div>
-  );
-  if (phase === "fallback") return (
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      <div style={{background:"rgba(251,146,60,.08)",border:"1px solid rgba(251,146,60,.2)",borderRadius:10,padding:"10px 12px",fontSize:11,color:"#fb923c",lineHeight:1.5}}>
-        ⚠️ Video dibuka di tab baru dari timestamp tepat. Untuk download file, install ekstensi <strong>Video DownloadHelper</strong> di Chrome lalu pilih segmen.
+  const ytUrl = `https://www.youtube.com/watch?v=${ytId}`;
+  const startTs = fmtTs(startS);
+  const endTs = fmtTs(endS);
+  const ytdlpCmd = `yt-dlp "${ytUrl}" --download-sections "*${startTs}-${endTs}" -f "bv*+ba/b" --merge-output-format mp4 -o "klip.mp4"`;
+
+  const copyYtdlp = () => {
+    navigator.clipboard?.writeText(ytdlpCmd);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  if (!showOpts) {
+    return (
+      <button onClick={() => setShowOpts(true)}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:700,fontSize:13,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>
+        ⬇️ Download Klip ({fmtDur(dur)})
+      </button>
+    );
+  }
+
+  const optStyle = {display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",textDecoration:"none",fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:8,textAlign:"left",fontFamily:"inherit"};
+
+  return (
+    <div style={{animation:"fadeUp .2s ease"}}>
+      <div style={{fontSize:10,color:"#666",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.5}}>Pilih cara download:</div>
+
+      {/* Option 1: Cobalt (Recommended) */}
+      <a href={`https://cobalt.tools/?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer"
+        style={{...optStyle,background:"rgba(201,151,51,.08)",borderColor:"rgba(201,151,51,.3)"}}>
+        <span style={{fontSize:22}}>⭐</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:"#c99733",fontWeight:800,marginBottom:2}}>Cobalt.tools (Rekomen)</div>
+          <div style={{color:"#888",fontSize:10,lineHeight:1.4}}>Cepat, tanpa iklan, kualitas HD</div>
+        </div>
+        <span style={{fontSize:14,color:"#c99733"}}>→</span>
+      </a>
+
+      {/* Option 2: SaveTube */}
+      <a href={`https://savetube.me/download?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer" style={optStyle}>
+        <span style={{fontSize:22}}>⚡</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:800,marginBottom:2}}>SaveTube</div>
+          <div style={{color:"#666",fontSize:10,lineHeight:1.4}}>Populer di Indonesia, gratis</div>
+        </div>
+        <span style={{fontSize:14,color:"#666"}}>→</span>
+      </a>
+
+      {/* Option 3: yt-dlp (Pro - Auto Cut!) */}
+      <button onClick={copyYtdlp} style={{...optStyle,background:copied?"rgba(34,197,94,.08)":"rgba(255,255,255,.03)",borderColor:copied?"rgba(34,197,94,.3)":"rgba(255,255,255,.08)"}}>
+        <span style={{fontSize:22}}>💻</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:800,marginBottom:2,color:copied?"#22c55e":"#fff"}}>{copied ? "✓ Command Disalin!" : "yt-dlp (Pro — Auto Cut!)"}</div>
+          <div style={{color:copied?"#22c55e88":"#666",fontSize:10,lineHeight:1.4}}>Otomatis potong sesuai timestamp</div>
+        </div>
+      </button>
+
+      {copied && (
+        <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:10,color:"#86efac",lineHeight:1.5}}>
+          💡 Command sudah tersalin. Buka <strong>Terminal/CMD</strong>, paste, tekan Enter. Belum install yt-dlp? Baca panduan di menu Help.
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:6,marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.05)"}}>
+        <a href={`${ytUrl}&t=${startS}s`} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"#888",fontSize:10,fontWeight:600,textAlign:"center",textDecoration:"none",cursor:"pointer"}}>
+          👀 Preview YouTube
+        </a>
+        <button onClick={() => setShowOpts(false)} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"#888",fontSize:10,fontWeight:600,textAlign:"center",cursor:"pointer",fontFamily:"inherit"}}>
+          ✕ Tutup
+        </button>
       </div>
-      <button onClick={() => setPhase("idle")} style={{background:"none",border:"1px solid rgba(255,255,255,.08)",color:"#555",fontSize:11,cursor:"pointer",padding:"6px",borderRadius:8}}>↩ Coba Lagi</button>
     </div>
   );
-  return null;
 }
 
 // =====================================================
@@ -276,14 +303,12 @@ function PlayerModal({ clip, ytId, onClose }) {
         </div>
         <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
           {[{id:"info",l:"📋 Info"},{id:"copy",l:"✏️ Caption"},{id:"dl",l:"⬇️ Download"}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"11px 4px",background:"none",border:"none",borderBottom:`2px solid ${tab===t.id?"#c99733":"transparent"}`,color:tab===t.id?"#c99733":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-              {t.l}
-            </button>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"11px 4px",background:"none",border:"none",borderBottom:`2px solid ${tab===t.id?"#c99733":"transparent"}`,color:tab===t.id?"#c99733":"#555",fontSize:11,fontWeight:700,cursor:"pointer"}}>{t.l}</button>
           ))}
         </div>
         <div style={{padding:"16px"}}>
           {tab==="info" && (
-            <div style={{animation:"fadeUp .2s ease"}}>
+            <div>
               <div style={{fontSize:15,fontWeight:800,lineHeight:1.4,marginBottom:12}}>{clip.title}</div>
               <div style={{display:"flex",gap:8,marginBottom:14}}>
                 {[{l:"Mulai",v:clip.timestamp_start},{l:"Selesai",v:clip.timestamp_end},{l:"Durasi",v:fmtDur(dur)}].map(it=>(
@@ -312,7 +337,7 @@ function PlayerModal({ clip, ytId, onClose }) {
             </div>
           )}
           {tab==="copy" && (
-            <div style={{animation:"fadeUp .2s ease"}}>
+            <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <span style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase"}}>Caption Lengkap</span>
                 <CopyBtn text={copyAll} label="Copy Semua"/>
@@ -334,7 +359,7 @@ function PlayerModal({ clip, ytId, onClose }) {
             </div>
           )}
           {tab==="dl" && (
-            <div style={{animation:"fadeUp .2s ease"}}>
+            <div>
               <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:10,padding:"10px 12px",marginBottom:14}}>
                 <div style={{fontSize:10,color:"#555",marginBottom:4,fontWeight:700,textTransform:"uppercase"}}>🎬 Segmen</div>
                 <div style={{fontSize:12,color:"#c99733",fontFamily:"monospace",fontWeight:700}}>{clip.timestamp_start} → {clip.timestamp_end} · {fmtDur(dur)}</div>
@@ -349,7 +374,7 @@ function PlayerModal({ clip, ytId, onClose }) {
 }
 
 // =====================================================
-// CLIP FINDER VIEW (main analysis page)
+// CLIP FINDER
 // =====================================================
 function ClipFinderView({ profile, onAnalysisSaved, restoreData }) {
   const [url, setUrl] = useState(restoreData?.url || "");
@@ -365,7 +390,6 @@ function ClipFinderView({ profile, onAnalysisSaved, restoreData }) {
   const [urlErr, setUrlErr] = useState("");
 
   const catObj = CATEGORIES.find(c=>c.id===category) || CATEGORIES[0];
-  const isPro = profile?.plan === "pro";
 
   const handleAnalyze = async () => {
     const id = getYtId(url.trim());
@@ -387,7 +411,6 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
       const parsed = safeJSON(raw);
       if (!parsed || !Array.isArray(parsed) || parsed.length === 0) throw new Error("Gagal parse respons AI");
       setClips(parsed); setPhase("done");
-      // Save to database
       await onAnalysisSaved({ yt_id: id, url, category, duration, clips: parsed });
     } catch (e) {
       setErrMsg(e.message || "Terjadi kesalahan."); setPhase("error");
@@ -399,22 +422,16 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
   return (
     <>
       <div style={{padding:"48px 40px 32px",textAlign:"center",background:"linear-gradient(180deg,rgba(201,151,51,.05) 0%,transparent 100%)",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
-        <div style={{fontSize:32,fontWeight:900,marginBottom:8,lineHeight:1.2}}>
-          Satu Video,<br/><span style={{color:"#c99733"}}>Puluhan Klip Viral!</span>
-        </div>
+        <div style={{fontSize:32,fontWeight:900,marginBottom:8,lineHeight:1.2}}>Satu Video,<br/><span style={{color:"#c99733"}}>Puluhan Klip Viral!</span></div>
         <div style={{fontSize:14,color:"#555",marginBottom:28}}>Paste link YouTube → AI analisis → Temukan momen terbaik</div>
-
         <div style={{maxWidth:640,margin:"0 auto",display:"flex",gap:10,marginBottom:12}}>
-          <input value={url} onChange={e=>{setUrl(e.target.value);setUrlErr("");}}
-            placeholder="https://www.youtube.com/watch?v=..."
-            onKeyDown={e=>e.key==="Enter"&&handleAnalyze()}
+          <input value={url} onChange={e=>{setUrl(e.target.value);setUrlErr("");}} placeholder="https://www.youtube.com/watch?v=..." onKeyDown={e=>e.key==="Enter"&&handleAnalyze()}
             style={{flex:1,background:"rgba(255,255,255,.06)",border:`1px solid ${urlErr?"#ef4444":"rgba(255,255,255,.12)"}`,borderRadius:12,padding:"14px 16px",color:"#f0f0f0",fontSize:14}}/>
           <button onClick={handleAnalyze} disabled={phase==="analyzing"} style={{padding:"14px 24px",borderRadius:12,border:"none",cursor:phase==="analyzing"?"not-allowed":"pointer",background:phase==="analyzing"?"rgba(201,151,51,.2)":"linear-gradient(135deg,#c99733,#a07828)",color:phase==="analyzing"?"#c99733":"#000",fontWeight:800,fontSize:14,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap",boxShadow:phase==="analyzing"?"none":"0 4px 20px rgba(201,151,51,.3)"}}>
             {phase==="analyzing" ? <><Spinner color="#c99733"/>Menganalisis...</> : "✨ Analisis Klip"}
           </button>
         </div>
         {urlErr && <div style={{fontSize:12,color:"#ef4444",marginBottom:8}}>{urlErr}</div>}
-
         <div style={{maxWidth:640,margin:"0 auto",display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center"}}>
           <select value={duration} onChange={e=>setDuration(e.target.value)} style={{background:"rgba(255,255,255,.06)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"8px 12px",color:"#ccc",fontSize:12,cursor:"pointer"}}>
             {DURATIONS.map(d=><option key={d} value={d}>{d}</option>)}
@@ -434,7 +451,7 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
           </div>
         )}
         {phase==="done" && clips.length > 0 && (
-          <div style={{maxWidth:1000,margin:"0 auto",animation:"fadeUp .3s ease"}}>
+          <div style={{maxWidth:1000,margin:"0 auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <div>
                 <div style={{fontSize:18,fontWeight:800}}>🎯 {clips.length} Klip Viral Ditemukan</div>
@@ -468,7 +485,7 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
 }
 
 // =====================================================
-// CLIPS SAYA (History from DB)
+// CLIPS SAYA
 // =====================================================
 function ClipsSayaView({ history, loading, onSelect, onDelete }) {
   return (
@@ -478,7 +495,6 @@ function ClipsSayaView({ history, loading, onSelect, onDelete }) {
           <div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🎬 Clips Saya</div>
           <div style={{fontSize:13,color:"#555"}}>Semua analisis yang pernah kamu buat</div>
         </div>
-
         {loading ? (
           <div style={{textAlign:"center",padding:60}}><Spinner size={32}/></div>
         ) : history.length === 0 ? (
@@ -492,7 +508,7 @@ function ClipsSayaView({ history, loading, onSelect, onDelete }) {
             {history.map((item,i) => {
               const cat = CATEGORIES.find(c=>c.id===item.category) || CATEGORIES[0];
               return (
-                <div key={item.id} onClick={()=>onSelect(item)} style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,overflow:"hidden",cursor:"pointer",transition:"all .2s",animation:"fadeUp .3s ease both",animationDelay:`${i*0.05}s`}}
+                <div key={item.id} onClick={()=>onSelect(item)} style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
                   onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,151,51,.4)"}
                   onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.07)"}>
                   <div style={{position:"relative",paddingTop:"52%",background:"#111"}}>
@@ -532,7 +548,6 @@ function LeaderboardView({ history }) {
           <div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🏆 Leaderboard</div>
           <div style={{fontSize:13,color:"#555"}}>Top 20 klip terbaikmu dengan potensi viral tertinggi</div>
         </div>
-
         {top.length === 0 ? (
           <div style={{textAlign:"center",padding:"60px 20px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16}}>
             <div style={{fontSize:48,marginBottom:16,opacity:.4}}>🏆</div>
@@ -546,7 +561,7 @@ function LeaderboardView({ history }) {
               const scCol = sc>=90?"#22c55e":sc>=80?"#84cc16":sc>=70?"#c99733":"#fb923c";
               const medals = ["🥇","🥈","🥉"];
               return (
-                <div key={i} style={{background:i<3?"rgba(201,151,51,.08)":"rgba(255,255,255,.025)",border:`1px solid ${i<3?"rgba(201,151,51,.3)":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:14,animation:"fadeUp .3s ease both",animationDelay:`${i*0.03}s`}}>
+                <div key={i} style={{background:i<3?"rgba(201,151,51,.08)":"rgba(255,255,255,.025)",border:`1px solid ${i<3?"rgba(201,151,51,.3)":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:14}}>
                   <div style={{fontSize:i<3?24:18,fontWeight:900,minWidth:36,textAlign:"center",color:i<3?"#c99733":"#555"}}>{i<3?medals[i]:`#${i+1}`}</div>
                   <img src={`https://img.youtube.com/vi/${clip.yt_id}/default.jpg`} alt="" style={{width:80,height:50,objectFit:"cover",borderRadius:6,opacity:.85}}/>
                   <div style={{flex:1,minWidth:0}}>
@@ -568,24 +583,20 @@ function LeaderboardView({ history }) {
 }
 
 // =====================================================
-// PRO LOCK VIEW (for Penjadwalan & Akun Sosmed)
+// PRO LOCK VIEW
 // =====================================================
 function ProLockView({ title, icon, description, features, profile, onUpgrade }) {
   const isPro = profile?.plan === "pro";
-
   if (isPro) {
     return (
       <div style={{padding:"60px 40px",textAlign:"center"}}>
         <div style={{fontSize:48,marginBottom:16}}>{icon}</div>
         <div style={{fontSize:22,fontWeight:900,marginBottom:8}}>{title}</div>
         <div style={{fontSize:14,color:"#666",marginBottom:24}}>Fitur ini sedang dalam pengembangan untuk pengguna PRO.</div>
-        <div style={{maxWidth:400,margin:"0 auto",background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:12,padding:"14px 18px",fontSize:12,color:"#22c55e"}}>
-          ✨ Kamu adalah pengguna PRO — fitur ini akan tersedia dalam update mendatang.
-        </div>
+        <div style={{maxWidth:400,margin:"0 auto",background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:12,padding:"14px 18px",fontSize:12,color:"#22c55e"}}>✨ Kamu adalah pengguna PRO — fitur ini akan tersedia dalam update mendatang.</div>
       </div>
     );
   }
-
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:600,margin:"0 auto"}}>
@@ -594,19 +605,11 @@ function ProLockView({ title, icon, description, features, profile, onUpgrade })
           <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#c99733",color:"#000",padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:900,marginBottom:14,letterSpacing:.5}}>👑 FITUR PRO</div>
           <div style={{fontSize:24,fontWeight:900,marginBottom:10}}>{title}</div>
           <div style={{fontSize:14,color:"#888",marginBottom:24,lineHeight:1.6}}>{description}</div>
-
           <div style={{textAlign:"left",background:"rgba(0,0,0,.3)",borderRadius:12,padding:"16px 20px",marginBottom:24}}>
             <div style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",marginBottom:10,letterSpacing:.5}}>Yang Kamu Dapat:</div>
-            {features.map((f,i) => (
-              <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,fontSize:13,color:"#ccc"}}>
-                <span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}
-              </div>
-            ))}
+            {features.map((f,i) => (<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,fontSize:13,color:"#ccc"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}
           </div>
-
-          <button onClick={onUpgrade} style={{background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:12,padding:"14px 32px",fontSize:14,fontWeight:900,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,151,51,.4)",animation:"glow 3s ease-in-out infinite"}}>
-            🚀 Upgrade ke PRO
-          </button>
+          <button onClick={onUpgrade} style={{background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:12,padding:"14px 32px",fontSize:14,fontWeight:900,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,151,51,.4)",animation:"glow 3s ease-in-out infinite"}}>🚀 Upgrade ke PRO</button>
         </div>
       </div>
     </div>
@@ -614,12 +617,11 @@ function ProLockView({ title, icon, description, features, profile, onUpgrade })
 }
 
 // =====================================================
-// UPGRADE VIEW (pricing + WhatsApp contact)
+// UPGRADE VIEW
 // =====================================================
 function UpgradeView({ profile }) {
   const [tab, setTab] = useState("monthly");
   const isPro = profile?.plan === "pro";
-
   const waMsg = encodeURIComponent(`Halo Admin MagerKlip, saya mau upgrade ke PRO.\n\nEmail: ${profile?.email}\nPaket: ${tab === "monthly" ? "Bulanan ("+PRICE_MONTHLY+")" : "Tahunan ("+PRICE_YEARLY+")"}\n\nMohon info pembayaran. Terima kasih!`);
   const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${waMsg}`;
 
@@ -630,16 +632,11 @@ function UpgradeView({ profile }) {
           <div style={{fontSize:48,marginBottom:16}}>👑</div>
           <div style={{fontSize:24,fontWeight:900,marginBottom:10}}>Kamu Sudah PRO!</div>
           <div style={{fontSize:14,color:"#888",lineHeight:1.6,marginBottom:20}}>Terima kasih sudah mendukung MagerKlip. Nikmati semua fitur PRO tanpa batas.</div>
-          {profile.pro_until && (
-            <div style={{background:"rgba(0,0,0,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#aaa"}}>
-              Aktif sampai: <strong style={{color:"#22c55e"}}>{new Date(profile.pro_until).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</strong>
-            </div>
-          )}
+          {profile.pro_until && (<div style={{background:"rgba(0,0,0,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#aaa"}}>Aktif sampai: <strong style={{color:"#22c55e"}}>{new Date(profile.pro_until).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</strong></div>)}
         </div>
       </div>
     );
   }
-
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:900,margin:"0 auto"}}>
@@ -647,49 +644,34 @@ function UpgradeView({ profile }) {
           <div style={{fontSize:32,fontWeight:900,marginBottom:8}}>Upgrade ke <span style={{color:"#c99733"}}>PRO</span></div>
           <div style={{fontSize:14,color:"#666"}}>Akses unlimited semua fitur premium MagerKlip</div>
         </div>
-
         <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
           <div style={{display:"flex",background:"rgba(255,255,255,.04)",borderRadius:10,padding:4}}>
             <button onClick={()=>setTab("monthly")} style={{padding:"8px 20px",borderRadius:8,border:"none",background:tab==="monthly"?"#c99733":"transparent",color:tab==="monthly"?"#000":"#888",fontSize:12,fontWeight:700,cursor:"pointer"}}>Bulanan</button>
             <button onClick={()=>setTab("yearly")} style={{padding:"8px 20px",borderRadius:8,border:"none",background:tab==="yearly"?"#c99733":"transparent",color:tab==="yearly"?"#000":"#888",fontSize:12,fontWeight:700,cursor:"pointer"}}>Tahunan <span style={{fontSize:9,background:"#22c55e",color:"#000",padding:"1px 5px",borderRadius:4,marginLeft:4}}>-32%</span></button>
           </div>
         </div>
-
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:780,margin:"0 auto"}}>
-          {/* Free */}
           <div style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:16,padding:"24px 28px"}}>
             <div style={{fontSize:11,color:"#666",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Free</div>
             <div style={{fontSize:32,fontWeight:900,marginBottom:4}}>Rp 0</div>
             <div style={{fontSize:11,color:"#555",marginBottom:20}}>Selamanya</div>
             <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {["5 analisis per hari","Maksimal 5 klip per video","Akses Clip Finder","History 7 hari terakhir"].map((f,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#999"}}><span style={{color:"#666"}}>✓</span> {f}</div>
-              ))}
+              {["5 analisis per hari","Maksimal 5 klip per video","Akses Clip Finder","History 7 hari terakhir"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#999"}}><span style={{color:"#666"}}>✓</span> {f}</div>))}
             </div>
             <button disabled style={{width:"100%",padding:"12px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#555",fontSize:12,fontWeight:700,cursor:"not-allowed"}}>Paket Saat Ini</button>
           </div>
-
-          {/* PRO */}
           <div style={{background:"linear-gradient(135deg,rgba(201,151,51,.12),rgba(201,151,51,.03))",border:"2px solid rgba(201,151,51,.5)",borderRadius:16,padding:"24px 28px",position:"relative"}}>
             <div style={{position:"absolute",top:-10,right:20,background:"#c99733",color:"#000",padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:900,letterSpacing:.5}}>👑 RECOMMENDED</div>
             <div style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Pro</div>
             <div style={{fontSize:32,fontWeight:900,marginBottom:4,color:"#c99733"}}>{tab==="monthly"?PRICE_MONTHLY:PRICE_YEARLY}</div>
             <div style={{fontSize:11,color:"#888",marginBottom:20}}>per {tab==="monthly"?"bulan":"tahun"}</div>
             <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {["Unlimited analisis","Maksimal 10 klip per video","Penjadwalan otomatis ke sosmed","Connect akun TikTok, IG, YouTube","History permanen","Priority support","Akses fitur baru duluan"].map((f,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#ddd"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>
-              ))}
+              {["Unlimited analisis","Maksimal 10 klip per video","Penjadwalan otomatis ke sosmed","Connect akun TikTok, IG, YouTube","History permanen","Priority support","Akses fitur baru duluan"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#ddd"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}
             </div>
-            <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",width:"100%",padding:"12px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",fontSize:13,fontWeight:900,cursor:"pointer",textDecoration:"none",textAlign:"center",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>
-              💬 Order via WhatsApp
-            </a>
+            <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",width:"100%",padding:"12px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",fontSize:13,fontWeight:900,cursor:"pointer",textDecoration:"none",textAlign:"center",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>💬 Order via WhatsApp</a>
           </div>
         </div>
-
-        <div style={{textAlign:"center",marginTop:32,fontSize:12,color:"#555",lineHeight:1.7}}>
-          Pembayaran via transfer bank atau e-wallet (DANA, GoPay, OVO)<br/>
-          Akun PRO aktif maksimal 1 jam setelah pembayaran dikonfirmasi.
-        </div>
+        <div style={{textAlign:"center",marginTop:32,fontSize:12,color:"#555",lineHeight:1.7}}>Pembayaran via transfer bank atau e-wallet (DANA, GoPay, OVO)<br/>Akun PRO aktif maksimal 1 jam setelah pembayaran dikonfirmasi.</div>
       </div>
     </div>
   );
@@ -701,13 +683,12 @@ function UpgradeView({ profile }) {
 function Sidebar({ view, setView, profile, onLogout }) {
   const isPro = profile?.plan === "pro";
   const nav = [
-    { id:"finder",     icon:"✂️", label:"Clip Finder" },
-    { id:"history",    icon:"🎬", label:"Clips Saya" },
-    { id:"leaderboard",icon:"🏆", label:"Leaderboard" },
-    { id:"scheduler",  icon:"📅", label:"Penjadwalan", pro:true },
-    { id:"social",     icon:"📱", label:"Akun Sosmed", pro:true },
+    { id:"finder", icon:"✂️", label:"Clip Finder" },
+    { id:"history", icon:"🎬", label:"Clips Saya" },
+    { id:"leaderboard", icon:"🏆", label:"Leaderboard" },
+    { id:"scheduler", icon:"📅", label:"Penjadwalan", pro:true },
+    { id:"social", icon:"📱", label:"Akun Sosmed", pro:true },
   ];
-
   return (
     <div style={{width:240,background:"#111",borderRight:"1px solid rgba(255,255,255,.06)",display:"flex",flexDirection:"column",position:"sticky",top:0,height:"100vh",flexShrink:0}}>
       <div style={{padding:"20px 16px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
@@ -719,7 +700,6 @@ function Sidebar({ view, setView, profile, onLogout }) {
           </div>
         </div>
       </div>
-
       <nav style={{padding:"12px 10px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
         {nav.map(item => (
           <div key={item.id} onClick={()=>setView(item.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,cursor:"pointer",background:view===item.id?"rgba(201,151,51,.12)":"transparent",color:view===item.id?"#c99733":"#666",fontSize:13,fontWeight:view===item.id?700:500,transition:"all .15s",borderLeft:view===item.id?"2px solid #c99733":"2px solid transparent"}}
@@ -730,17 +710,12 @@ function Sidebar({ view, setView, profile, onLogout }) {
           </div>
         ))}
       </nav>
-
       <div style={{padding:"12px 10px",borderTop:"1px solid rgba(255,255,255,.06)"}}>
         {!isPro && (
-          <button onClick={()=>setView("upgrade")} style={{width:"100%",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:800,cursor:"pointer",marginBottom:10,boxShadow:"0 2px 12px rgba(201,151,51,.3)"}}>
-            👑 Upgrade ke PRO
-          </button>
+          <button onClick={()=>setView("upgrade")} style={{width:"100%",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:800,cursor:"pointer",marginBottom:10,boxShadow:"0 2px 12px rgba(201,151,51,.3)"}}>👑 Upgrade ke PRO</button>
         )}
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"rgba(255,255,255,.03)",borderRadius:8}}>
-          <div style={{width:30,height:30,borderRadius:"50%",background:isPro?"linear-gradient(135deg,#c99733,#a07828)":"#333",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:isPro?"#000":"#aaa",flexShrink:0}}>
-            {profile?.email?.[0]?.toUpperCase() || "?"}
-          </div>
+          <div style={{width:30,height:30,borderRadius:"50%",background:isPro?"linear-gradient(135deg,#c99733,#a07828)":"#333",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:isPro?"#000":"#aaa",flexShrink:0}}>{profile?.email?.[0]?.toUpperCase() || "?"}</div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:11,fontWeight:700,color:"#ddd",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile?.email}</div>
             <div style={{fontSize:9,color:isPro?"#c99733":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{isPro?"👑 PRO":"Free Plan"}</div>
@@ -764,19 +739,12 @@ export default function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [restoreData, setRestoreData] = useState(null);
 
-  // Auth state listener
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
-    });
+    supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setLoading(false); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => { setSession(sess); });
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Load profile when session changes
   useEffect(() => {
     if (!session) { setProfile(null); return; }
     (async () => {
@@ -785,7 +753,6 @@ export default function App() {
     })();
   }, [session]);
 
-  // Load history when session changes
   useEffect(() => {
     if (!session) { setHistory([]); return; }
     loadHistory();
@@ -809,10 +776,7 @@ export default function App() {
     loadHistory();
   };
 
-  const handleSelectHistory = (item) => {
-    setRestoreData(item);
-    setView("finder");
-  };
+  const handleSelectHistory = (item) => { setRestoreData(item); setView("finder"); };
 
   const handleLogout = async () => {
     if (window.confirm("Yakin mau logout?")) {
@@ -829,7 +793,6 @@ export default function App() {
       </div>
     );
   }
-
   if (!session) return <AuthScreen />;
 
   return (
@@ -840,7 +803,7 @@ export default function App() {
         {view === "finder" && <ClipFinderView profile={profile} onAnalysisSaved={saveAnalysis} restoreData={restoreData}/>}
         {view === "history" && <ClipsSayaView history={history} loading={historyLoading} onSelect={handleSelectHistory} onDelete={deleteHistory}/>}
         {view === "leaderboard" && <LeaderboardView history={history}/>}
-        {view === "scheduler" && <ProLockView title="Penjadwalan Otomatis" icon="📅" description="Jadwalkan posting klip ke TikTok, Instagram Reels, dan YouTube Shorts secara otomatis." features={["Schedule unlimited posting","Multi-platform: TikTok, IG, YouTube","Optimasi jam posting berdasarkan audience","Analytics performance","Auto-repost untuk konten viral"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
+        {view === "scheduler" && <ProLockView title="Penjadwalan Otomatis" icon="📅" description="Jadwalkan posting klip ke TikTok, Instagram Reels, dan YouTube Shorts secara otomatis." features={["Schedule unlimited posting","Multi-platform: TikTok, IG, YouTube","Optimasi jam posting","Analytics performance","Auto-repost untuk konten viral"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
         {view === "social" && <ProLockView title="Akun Sosial Media" icon="📱" description="Connect dan kelola semua akun sosial media kamu dari satu dashboard." features={["Connect TikTok, Instagram, YouTube","Manage multi-akun dari 1 dashboard","Auto-cross-posting","Performance insights real-time","Caption AI per platform"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
         {view === "upgrade" && <UpgradeView profile={profile}/>}
       </div>
