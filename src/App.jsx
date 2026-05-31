@@ -27,14 +27,16 @@ function safeJSON(raw) {
   return null;
 }
 async function callClaude(messages, system = "", maxTokens = 5000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const prompt = (system ? system + "\n\n" : "") + 
+    messages.map(m => m.content).join("\n");
+  const res = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: maxTokens, system, messages }),
+    body: JSON.stringify({ prompt }),
   });
   const d = await res.json();
-  if (d.error) throw new Error(d.error.message);
-  return d.content?.map(b => b.text || "").join("") || "";
+  if (d.error) throw new Error(d.error);
+  return d.text || "";
 }
 
 const CATEGORIES = [
