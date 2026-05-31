@@ -1,594 +1,531 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 
-const STYLES = ["Cinematic", "Vlog", "Short Form", "Documentary", "TikTok", "Reels", "YouTube"];
-
-const INITIAL_PROJECTS = [
-  { id: 1, title: "Product Launch Reel", duration: "0:32", size: "124MB", status: "selesai", progress: 100, icon: "🎬", created: "2 jam lalu" },
-  { id: 2, title: "Behind The Scenes", duration: "1:14", size: "340MB", status: "memproses", progress: 67, icon: "🎥", created: "6 jam lalu" },
-  { id: 3, title: "Tutorial AI Workflow", duration: "2:05", size: "512MB", status: "selesai", progress: 100, icon: "🤖", created: "1 hari lalu" },
-  { id: 4, title: "Highlight Reel Q2", duration: "—", size: "—", status: "antrian", progress: 0, icon: "✨", created: "Baru saja" },
-  { id: 5, title: "Short Form Instagram", duration: "0:15", size: "46MB", status: "selesai", progress: 100, icon: "📱", created: "3 jam lalu" },
-  { id: 6, title: "Cinematic Brand Story", duration: "—", size: "—", status: "gagal", progress: 34, icon: "🎞", created: "4 hari lalu" },
-];
-
-const STATUS_CONFIG = {
-  selesai: { label: "SELESAI", color: "#22c55e", bg: "rgba(34,197,94,0.15)" },
-  memproses: { label: "MEMPROSES", color: "#3b82f6", bg: "rgba(59,130,246,0.15)" },
-  antrian: { label: "ANTRIAN", color: "#f59e0b", bg: "rgba(245,158,11,0.15)" },
-  gagal: { label: "GAGAL", color: "#ef4444", bg: "rgba(239,68,68,0.15)" },
-};
-
-const LEADERBOARD_DATA = [
-  { rank: 1, name: "Alex Creator", clips: 48, points: 2840, badge: "🥇" },
-  { rank: 2, name: "Studio Vibe", clips: 35, points: 2210, badge: "🥈" },
-  { rank: 3, name: "NightOwl Films", clips: 29, points: 1950, badge: "🥉" },
-  { rank: 4, name: "You", clips: 6, points: 580, badge: "⭐", isMe: true },
-  { rank: 5, name: "Clip Master", clips: 22, points: 1440, badge: "" },
-  { rank: 6, name: "PixelPro", clips: 18, points: 1120, badge: "" },
-];
-
-function ProgressBar({ progress, status }) {
-  const color = STATUS_CONFIG[status]?.color || "#22c55e";
-  return (
-    <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 4, overflow: "hidden", marginTop: 8 }}>
-      <div style={{
-        width: `${progress}%`, height: "100%", borderRadius: 4,
-        background: status === "gagal" ? "#ef4444" : status === "memproses" ? "linear-gradient(90deg,#3b82f6,#60a5fa)" : color,
-        transition: "width 0.5s ease",
-        boxShadow: status === "memproses" ? "0 0 8px rgba(59,130,246,0.6)" : "none"
-      }} />
-    </div>
-  );
+function getYtId(url) {
+  const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
 }
-
-function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status];
-  return (
-    <span style={{
-      padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-      color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}40`
-    }}>{cfg.label}</span>
-  );
+function parseTs(ts) {
+  if (!ts) return 0;
+  const p = ts.split(":").map(Number);
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return parseInt(ts) || 0;
 }
-
-function ProjectCard({ project, onClick }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      onClick={() => onClick(project)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: hovered ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)",
-        border: `1px solid ${hovered ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.07)"}`,
-        borderRadius: 12, padding: 16, cursor: "pointer",
-        transition: "all 0.2s ease", transform: hovered ? "translateY(-2px)" : "none",
-        boxShadow: hovered ? "0 8px 24px rgba(0,0,0,0.4)" : "none"
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-        <div style={{
-          width: 48, height: 48, borderRadius: 10, background: "rgba(255,255,255,0.05)",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22
-        }}>{project.icon}</div>
-        <StatusBadge status={project.status} />
-      </div>
-      <div style={{ fontWeight: 600, fontSize: 13, color: "#e2e8f0", marginBottom: 4, lineHeight: 1.3 }}>{project.title}</div>
-      <div style={{ fontSize: 11, color: "#64748b", display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {project.duration !== "—" && <span>{project.duration}</span>}
-        {project.size !== "—" && <span>· {project.size}</span>}
-        <span>· {project.created}</span>
-      </div>
-      <ProgressBar progress={project.progress} status={project.status} />
-      <div style={{ fontSize: 10, color: "#64748b", marginTop: 4, textAlign: "right" }}>
-        {project.status === "selesai" ? "Selesai" :
-          project.status === "memproses" ? `Memproses ${project.progress}%` :
-          project.status === "antrian" ? "Antrian" : `Gagal ${project.progress}%`}
-      </div>
-    </div>
-  );
+function fmtDur(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
-
-function StatCard({ icon, value, label, color }) {
-  return (
-    <div style={{
-      background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-      borderRadius: 12, padding: "16px 20px", flex: 1, minWidth: 100
-    }}>
-      <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: color || "#e2e8f0", fontFamily: "monospace" }}>{value}</div>
-      <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{label}</div>
-    </div>
-  );
+function fmtTs(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h > 0) return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
-
-function Modal({ project, onClose, onRetry, onDelete }) {
-  if (!project) return null;
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100
-    }} onClick={onClose}>
-      <div style={{
-        background: "#0f172a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 16,
-        padding: 28, maxWidth: 400, width: "90%", color: "#e2e8f0"
-      }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div style={{ fontSize: 28 }}>{project.icon}</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 20 }}>✕</button>
-        </div>
-        <h3 style={{ margin: "0 0 8px", fontSize: 18 }}>{project.title}</h3>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-          <StatusBadge status={project.status} />
-          {project.duration !== "—" && <span style={{ fontSize: 11, color: "#64748b", padding: "2px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>⏱ {project.duration}</span>}
-          {project.size !== "—" && <span style={{ fontSize: 11, color: "#64748b", padding: "2px 8px", background: "rgba(255,255,255,0.05)", borderRadius: 4 }}>💾 {project.size}</span>}
-        </div>
-        <ProgressBar progress={project.progress} status={project.status} />
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, marginBottom: 20 }}>Progress: {project.progress}% · {project.created}</div>
-        <div style={{ display: "flex", gap: 10 }}>
-          {project.status === "selesai" && (
-            <button style={{ flex: 1, padding: "10px 16px", borderRadius: 8, background: "#22c55e", color: "#000", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>⬇ Download</button>
-          )}
-          {project.status === "gagal" && (
-            <button onClick={() => { onRetry(project.id); onClose(); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 8, background: "#f59e0b", color: "#000", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>🔄 Retry</button>
-          )}
-          <button onClick={() => { onDelete(project.id); onClose(); }} style={{ flex: 1, padding: "10px 16px", borderRadius: 8, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer", fontWeight: 600, fontSize: 13 }}>🗑 Hapus</button>
-        </div>
-      </div>
-    </div>
-  );
+function safeJSON(raw) {
+  try { return JSON.parse(raw.replace(/```json|```/g,"").trim()); } catch {}
+  const m = raw.match(/\[[\s\S]*\]/);
+  if (m) try { return JSON.parse(m[0]); } catch {}
+  return null;
 }
-
-function HomeView({ setActiveNav, stats, projects }) {
-  const recent = projects.slice(0, 3);
-  return (
-    <div style={{ animation: "fadeIn 0.3s ease" }}>
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: 22, fontWeight: 700 }}>Selamat datang di <span style={{ color: "#f59e0b" }}>MagerKlip</span> ✂</h2>
-        <p style={{ margin: 0, color: "#64748b", fontSize: 13 }}>Platform AI untuk membuat klip video profesional secara otomatis.</p>
-      </div>
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-        <StatCard icon="🎬" value={stats.total} label="Total Project" />
-        <StatCard icon="✅" value={stats.selesai} label="Selesai" color="#22c55e" />
-        <StatCard icon="⚙️" value={stats.proses} label="Sedang Proses" color="#3b82f6" />
-        <StatCard icon="💾" value={stats.storage} label="Storage" color="#f59e0b" />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
-        {[
-          { icon: "✨", title: "AI Generate", desc: "Buat klip dari deskripsi teks", nav: "ai", color: "#f59e0b" },
-          { icon: "🎬", title: "Clip Projects", desc: "Kelola semua video kamu", nav: "projects", color: "#3b82f6" },
-          { icon: "🏆", title: "Leaderboard", desc: "Lihat ranking kreator", nav: "leaderboard", color: "#22c55e" },
-          { icon: "⚡", title: "Upgrade Plan", desc: "Akses fitur premium", nav: "upgrade", color: "#a855f7" },
-        ].map(item => (
-          <div key={item.nav} onClick={() => setActiveNav(item.nav)} style={{
-            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 12, padding: 16, cursor: "pointer", transition: "all 0.2s"
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>{item.icon}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: item.color, marginBottom: 4 }}>{item.title}</div>
-            <div style={{ fontSize: 11, color: "#64748b" }}>{item.desc}</div>
-          </div>
-        ))}
-      </div>
-      {recent.length > 0 && (
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8", marginBottom: 12 }}>Project Terbaru</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {recent.map(p => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: "10px 14px", border: "1px solid rgba(255,255,255,0.07)" }}>
-                <span style={{ fontSize: 20 }}>{p.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.title}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>{p.created}</div>
-                </div>
-                <StatusBadge status={p.status} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AIView({ promptText, setPromptText, selectedStyle, setSelectedStyle, generating, generateProgress, handleGenerate }) {
-  return (
-    <div style={{ animation: "fadeIn 0.3s ease" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>
-        <span style={{ color: "#f59e0b" }}>✨</span> AI Generate Klip
-      </h2>
-      <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: 13 }}>Deskripsikan video yang kamu inginkan, AI akan membuatnya otomatis.</p>
-      <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 24, marginBottom: 16 }}>
-        <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Deskripsi Klip</div>
-        <textarea
-          value={promptText}
-          onChange={e => setPromptText(e.target.value)}
-          placeholder="Contoh: Buat highlight reel produk baru dengan musik energetik, durasi 30 detik, gaya cinematic..."
-          rows={4}
-          style={{
-            width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 10, padding: "12px 14px", color: "#e2e8f0", fontSize: 13, outline: "none",
-            resize: "none", boxSizing: "border-box", fontFamily: "inherit"
-          }}
-        />
-        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>Style Output</div>
-            <select value={selectedStyle} onChange={e => setSelectedStyle(e.target.value)} style={{
-              width: "100%", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 8, padding: "9px 12px", color: "#e2e8f0", fontSize: 13, cursor: "pointer"
-            }}>
-              {STYLES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <button onClick={handleGenerate} disabled={generating} style={{
-            padding: "10px 24px", borderRadius: 8, background: generating ? "#78350f" : "#f59e0b",
-            border: "none", color: generating ? "#fbbf24" : "#000", cursor: generating ? "not-allowed" : "pointer",
-            fontWeight: 700, fontSize: 13, marginTop: 20, whiteSpace: "nowrap"
-          }}>
-            {generating ? `Generating ${Math.round(generateProgress)}%` : "✨ Generate Klip"}
-          </button>
-        </div>
-        {generating && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", marginBottom: 6 }}>
-              <span>Memproses dengan AI...</span><span>{Math.round(generateProgress)}%</span>
-            </div>
-            <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 4, height: 6, overflow: "hidden" }}>
-              <div style={{ width: `${generateProgress}%`, height: "100%", background: "linear-gradient(90deg,#f59e0b,#fbbf24)", borderRadius: 4, transition: "width 0.3s" }} />
-            </div>
-          </div>
-        )}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-        {["Produk baru dengan musik energetik", "Tutorial step-by-step 60 detik", "Highlight event kantor", "Behind the scenes studio", "Short form TikTok viral", "Cinematic travel vlog"].map(s => (
-          <div key={s} onClick={() => setPromptText(s)} style={{
-            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-            borderRadius: 8, padding: "10px 12px", cursor: "pointer", fontSize: 12, color: "#94a3b8", transition: "all 0.2s"
-          }}>💡 {s}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LeaderboardView() {
-  return (
-    <div style={{ animation: "fadeIn 0.3s ease" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>
-        <span style={{ color: "#f59e0b" }}>🏆</span> Leaderboard Kreator
-      </h2>
-      <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: 13 }}>Ranking kreator terbaik bulan ini berdasarkan jumlah klip & poin.</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {LEADERBOARD_DATA.map(user => (
-          <div key={user.rank} style={{
-            display: "flex", alignItems: "center", gap: 14,
-            background: user.isMe ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.03)",
-            border: `1px solid ${user.isMe ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.07)"}`,
-            borderRadius: 12, padding: "14px 16px"
-          }}>
-            <div style={{ fontSize: 22, width: 32, textAlign: "center" }}>{user.badge || `#${user.rank}`}</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: user.isMe ? "#f59e0b" : "#e2e8f0" }}>
-                {user.name} {user.isMe && <span style={{ fontSize: 10, background: "rgba(245,158,11,0.2)", color: "#f59e0b", padding: "1px 6px", borderRadius: 4, marginLeft: 4 }}>KAMU</span>}
-              </div>
-              <div style={{ fontSize: 11, color: "#64748b" }}>{user.clips} klip · {user.points} poin</div>
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: user.rank <= 3 ? "#f59e0b" : "#475569" }}>
-              {user.points.toLocaleString()} pts
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function UpgradeView() {
-  const plans = [
-    { name: "Free", price: "Gratis", color: "#64748b", features: ["3 klip/bulan", "1GB storage", "720p output", "Watermark"] },
-    { name: "Pro", price: "Rp 99.000/bln", color: "#f59e0b", features: ["50 klip/bulan", "50GB storage", "4K output", "Tanpa watermark", "Priority queue"], popular: true },
-    { name: "Studio", price: "Rp 299.000/bln", color: "#a855f7", features: ["Unlimited klip", "500GB storage", "8K output", "Custom branding", "API access", "Dedicated support"] },
-  ];
-  return (
-    <div style={{ animation: "fadeIn 0.3s ease" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>
-        <span style={{ color: "#f59e0b" }}>⚡</span> Upgrade Paket
-      </h2>
-      <p style={{ margin: "0 0 24px", color: "#64748b", fontSize: 13 }}>Pilih paket yang sesuai kebutuhan kreator kamu.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-        {plans.map(plan => (
-          <div key={plan.name} style={{
-            background: plan.popular ? "rgba(245,158,11,0.06)" : "rgba(255,255,255,0.03)",
-            border: `1px solid ${plan.popular ? "rgba(245,158,11,0.4)" : "rgba(255,255,255,0.08)"}`,
-            borderRadius: 14, padding: 20, position: "relative"
-          }}>
-            {plan.popular && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "#f59e0b", color: "#000", fontSize: 10, fontWeight: 700, padding: "2px 10px", borderRadius: 20 }}>POPULER</div>}
-            <div style={{ fontSize: 16, fontWeight: 700, color: plan.color, marginBottom: 4 }}>{plan.name}</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0", marginBottom: 16 }}>{plan.price}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-              {plan.features.map(f => (
-                <div key={f} style={{ fontSize: 12, color: "#94a3b8", display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{ color: plan.color }}>✓</span> {f}
-                </div>
-              ))}
-            </div>
-            <button style={{
-              width: "100%", padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer",
-              background: plan.popular ? "#f59e0b" : "rgba(255,255,255,0.08)",
-              color: plan.popular ? "#000" : "#94a3b8", fontWeight: 600, fontSize: 13
-            }}>
-              {plan.price === "Gratis" ? "Plan Aktif" : "Pilih Plan"}
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default function MagerKlip() {
-  const [activeNav, setActiveNav] = useState("projects");
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
-  const [filter, setFilter] = useState("semua");
-  const [search, setSearch] = useState("");
-  const [promptText, setPromptText] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState("Cinematic");
-  const [generating, setGenerating] = useState(false);
-  const [generateProgress, setGenerateProgress] = useState(0);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [notification, setNotification] = useState(null);
-  const nextId = useRef(7);
-  const fileRef = useRef(null);
-
-  const notify = (msg, type = "success") => {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setProjects(prev => prev.map(p => {
-        if (p.status === "memproses" && p.progress < 100) {
-          const newP = Math.min(100, p.progress + Math.random() * 3);
-          if (newP >= 100) {
-            notify(`✅ "${p.title}" selesai diproses!`);
-            return { ...p, progress: 100, status: "selesai" };
-          }
-          return { ...p, progress: Math.round(newP) };
-        }
-        return p;
-      }));
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleGenerate = async () => {
-    if (!promptText.trim()) { notify("Masukkan deskripsi klip terlebih dahulu!", "error"); return; }
-    setGenerating(true);
-    setGenerateProgress(0);
-    const newProject = {
-      id: nextId.current++,
-      title: promptText.slice(0, 30) + (promptText.length > 30 ? "..." : ""),
-      duration: "—", size: "—", status: "antrian", progress: 0,
-      icon: ["🎬", "🎥", "✨", "🎞", "📹"][Math.floor(Math.random() * 5)],
-      created: "Baru saja"
-    };
-    setProjects(prev => [newProject, ...prev]);
-    setActiveNav("projects");
-    setTimeout(() => {
-      setProjects(prev => prev.map(p => p.id === newProject.id ? { ...p, status: "memproses", progress: 5 } : p));
-    }, 1500);
-    let prog = 0;
-    const gen = setInterval(() => {
-      prog += Math.random() * 15;
-      setGenerateProgress(Math.min(98, prog));
-      if (prog >= 98) {
-        clearInterval(gen);
-        setGenerating(false);
-        setGenerateProgress(0);
-        setPromptText("");
-        notify(`🎬 Klip "${newProject.title}" sedang diproses!`);
-      }
-    }, 300);
-  };
-
-  const handleUpload = (e) => {
-    const files = e.target.files;
-    if (!files.length) return;
-    Array.from(files).forEach(file => {
-      const newProject = {
-        id: nextId.current++,
-        title: file.name.replace(/\.[^/.]+$/, ""),
-        duration: "—",
-        size: (file.size / (1024 * 1024)).toFixed(1) + "MB",
-        status: "memproses", progress: 10,
-        icon: "📤", created: "Baru saja"
-      };
-      setProjects(prev => [newProject, ...prev]);
-    });
-    notify(`📤 ${files.length} file berhasil diupload!`);
-    e.target.value = "";
-  };
-
-  const handleDelete = (id) => { setProjects(prev => prev.filter(p => p.id !== id)); notify("🗑 Proyek dihapus"); };
-  const handleRetry = (id) => { setProjects(prev => prev.map(p => p.id === id ? { ...p, status: "memproses", progress: 5 } : p)); notify("🔄 Memproses ulang..."); };
-
-  const filtered = projects.filter(p => {
-    const matchFilter = filter === "semua" || p.status === filter;
-    const matchSearch = p.title.toLowerCase().includes(search.toLowerCase());
-    return matchFilter && matchSearch;
+async function callClaude(messages, system = "", maxTokens = 5000) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: maxTokens, system, messages }),
   });
+  const d = await res.json();
+  if (d.error) throw new Error(d.error.message);
+  return d.content?.map(b => b.text || "").join("") || "";
+}
 
-  const stats = {
-    total: projects.length,
-    selesai: projects.filter(p => p.status === "selesai").length,
-    proses: projects.filter(p => p.status === "memproses").length,
-    storage: (projects.reduce((acc, p) => { const mb = parseFloat(p.size); return acc + (isNaN(mb) ? 0 : mb); }, 0) / 1024).toFixed(2) + " GB"
+const CATEGORIES = [
+  { id:"podcast", label:"Podcast & Blogging", emoji:"🎙️" },
+  { id:"gaming",  label:"Gaming",             emoji:"🎮" },
+  { id:"edu",     label:"Education",          emoji:"📚" },
+  { id:"vlog",    label:"Vlog & Lifestyle",   emoji:"🌟" },
+  { id:"tech",    label:"Teknologi",          emoji:"💻" },
+  { id:"bisnis",  label:"Bisnis & Finance",   emoji:"💰" },
+  { id:"masak",   label:"Masak & Kuliner",    emoji:"🍳" },
+  { id:"otomotif",label:"Otomotif",           emoji:"🚗" },
+];
+const DURATIONS   = ["15-30s","30-60s","60-90s","1-3 menit"];
+const RESOLUTIONS = ["480p","720p","1080p"];
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:#0d0d0d;color:#f0f0f0;-webkit-font-smoothing:antialiased}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px #c9973355}50%{box-shadow:0 0 40px #c9973388}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#c9973344;border-radius:2px}
+input,select,textarea,button{font-family:'Plus Jakarta Sans',sans-serif}
+`;
+
+function Spinner({ size=16, color="#c99733" }) {
+  return <span style={{display:"inline-block",width:size,height:size,border:`2px solid ${color}30`,borderTopColor:color,borderRadius:"50%",animation:"spin .7s linear infinite",flexShrink:0}}/>;
+}
+
+function CopyBtn({ text, label="Copy" }) {
+  const [ok,setOk] = useState(false);
+  return (
+    <button onClick={()=>{navigator.clipboard?.writeText(text);setOk(true);setTimeout(()=>setOk(false),2000);}}
+      style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${ok?"#22c55e44":"rgba(255,255,255,.1)"}`,background:ok?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",color:ok?"#22c55e":"#777",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap"}}>
+      {ok?"✓ Tersalin":"📋 "+label}
+    </button>
+  );
+}
+
+function Toggle({ label, value, onChange }) {
+  return (
+    <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",userSelect:"none"}}>
+      <div onClick={()=>onChange(!value)} style={{width:38,height:21,borderRadius:11,position:"relative",background:value?"#c99733":"rgba(255,255,255,.1)",transition:"background .2s",flexShrink:0}}>
+        <div style={{position:"absolute",top:2.5,left:value?18:2.5,width:16,height:16,borderRadius:"50%",background:"#fff",transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.4)"}}/>
+      </div>
+      <span style={{fontSize:12,color:"#666"}}>{label}</span>
+    </label>
+  );
+}
+
+function SectionLabel({ children }) {
+  return <div style={{fontSize:10,color:"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:.8,marginBottom:9}}>{children}</div>;
+}
+
+function DownloadBtn({ ytId, startS, endS, dur, filename }) {
+  const [phase, setPhase] = useState("idle");
+  const [dlUrl, setDlUrl] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+  const [progress, setProgress] = useState(0);
+
+  const fetchLink = async () => {
+    setPhase("fetching"); setErrMsg("");
+    try {
+      const body = { url:`https://www.youtube.com/watch?v=${ytId}`, videoQuality:"720", filenameStyle:"pretty", downloadMode:"auto" };
+      const res = await fetch("https://api.cobalt.tools/", { method:"POST", headers:{"Content-Type":"application/json","Accept":"application/json"}, body:JSON.stringify(body) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.status === "error") throw new Error(data.error?.code || "cobalt error");
+      const url = data.url || (data.picker && data.picker[0]?.url);
+      if (!url) throw new Error("No download URL returned");
+      setDlUrl(url); setPhase("ready");
+    } catch (e) {
+      const ytCutter = `https://ytcutter.cc/?url=${encodeURIComponent("https://www.youtube.com/watch?v="+ytId)}&start=${startS}&end=${endS}`;
+      setDlUrl(ytCutter);
+      setErrMsg("API gagal — menggunakan YT Cutter sebagai fallback");
+      setPhase("ready");
+    }
   };
 
-  const navItems = [
-    { id: "home", icon: "🏠", label: "Home" },
-    { id: "projects", icon: "🎬", label: "Clip Projects" },
-    { id: "ai", icon: "✨", label: "AI Generate" },
-    { id: "leaderboard", icon: "🏆", label: "Leaderboard" },
-    { id: "upgrade", icon: "⚡", label: "Upgrade" },
-  ];
+  const triggerSave = async () => {
+    setPhase("saving"); setProgress(0);
+    try {
+      const response = await fetch(dlUrl, { mode:"cors" });
+      if (!response.ok || !response.body) throw new Error("stream failed");
+      const contentLength = response.headers.get("Content-Length");
+      const total = contentLength ? parseInt(contentLength) : 0;
+      const reader = response.body.getReader();
+      const chunks = []; let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); received += value.length;
+        if (total) setProgress(Math.round((received/total)*100));
+        else setProgress(prev => Math.min(prev+4, 90));
+      }
+      setProgress(100);
+      const blob = new Blob(chunks, {type:"video/mp4"});
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl; a.download = filename || `klip_${ytId}_${startS}-${endS}.mp4`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      setPhase("done");
+    } catch {
+      window.open(dlUrl, "_blank"); setPhase("done");
+    }
+  };
 
-  const renderContent = () => {
-    if (activeNav === "home") return <HomeView setActiveNav={setActiveNav} stats={stats} projects={projects} />;
-    if (activeNav === "ai") return <AIView promptText={promptText} setPromptText={setPromptText} selectedStyle={selectedStyle} setSelectedStyle={setSelectedStyle} generating={generating} generateProgress={generateProgress} handleGenerate={handleGenerate} />;
-    if (activeNav === "leaderboard") return <LeaderboardView />;
-    if (activeNav === "upgrade") return <UpgradeView />;
+  const reset = () => { setPhase("idle"); setDlUrl(null); setProgress(0); setErrMsg(""); };
+  const btnBase = { display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"15px",borderRadius:12,border:"none",width:"100%",fontWeight:800,fontSize:14,cursor:"pointer",transition:"all .2s",fontFamily:"'Plus Jakarta Sans',sans-serif" };
 
-    return (
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>
-            <span style={{ color: "#f59e0b" }}>Clip</span> Projects
-          </h2>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari project..." style={{
-              background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 8, padding: "8px 12px", color: "#e2e8f0", fontSize: 12, outline: "none", width: 160
-            }} />
-            <button onClick={() => fileRef.current?.click()} style={{
-              padding: "8px 16px", borderRadius: 8, background: "#f59e0b", border: "none",
-              color: "#000", cursor: "pointer", fontWeight: 700, fontSize: 12
-            }}>+ Upload Clip</button>
-            <input ref={fileRef} type="file" multiple accept="video/*" style={{ display: "none" }} onChange={handleUpload} />
-          </div>
+  if (phase==="idle") return (
+    <button onClick={fetchLink} style={{...btnBase,background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 24px rgba(201,151,51,.35)",animation:"glow 2s ease-in-out infinite"}}>
+      ✂️ Siapkan Download Klip
+      <span style={{fontSize:10,background:"rgba(0,0,0,.2)",borderRadius:4,padding:"2px 6px"}}>Step 1</span>
+    </button>
+  );
+  if (phase==="fetching") return (
+    <div style={{...btnBase,background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.3)",color:"#c99733",cursor:"default"}}>
+      <Spinner color="#c99733"/><span>AI sedang mengambil link klip...</span>
+    </div>
+  );
+  if (phase==="ready") return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {errMsg && <div style={{fontSize:10,color:"#fb923c",background:"rgba(251,146,60,.08)",border:"1px solid rgba(251,146,60,.2)",borderRadius:8,padding:"6px 10px"}}>⚠️ {errMsg}</div>}
+      <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)",borderRadius:10,padding:"10px 13px",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:16}}>✅</span>
+        <div><div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>Link klip berhasil didapat!</div>
+        <div style={{fontSize:10,color:"#555",marginTop:1}}>{fmtTs(startS)} → {fmtTs(endS)} · {fmtDur(dur)}</div></div>
+      </div>
+      <button onClick={triggerSave} style={{...btnBase,background:"linear-gradient(135deg,#22c55e,#16a34a)",color:"#fff",boxShadow:"0 4px 24px rgba(34,197,94,.3)"}}>
+        ⬇️ Download & Simpan ke Perangkat
+        <span style={{fontSize:10,background:"rgba(0,0,0,.2)",borderRadius:4,padding:"2px 6px"}}>Step 2</span>
+      </button>
+      <button onClick={reset} style={{background:"none",border:"none",color:"#444",fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"2px"}}>Batal / Ulangi</button>
+    </div>
+  );
+  if (phase==="saving") return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{...btnBase,background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.2)",color:"#22c55e",cursor:"default"}}>
+        <Spinner color="#22c55e"/><span>{progress>0?`Mengunduh... ${progress}%`:"Menyiapkan file..."}</span>
+      </div>
+      {progress>0 && <div style={{height:4,borderRadius:2,background:"rgba(255,255,255,.06)",overflow:"hidden"}}><div style={{height:"100%",width:`${progress}%`,background:"linear-gradient(90deg,#22c55e77,#22c55e)",borderRadius:2,transition:"width .3s"}}/></div>}
+    </div>
+  );
+  if (phase==="done") return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{...btnBase,background:"rgba(34,197,94,.1)",border:"1px solid rgba(34,197,94,.3)",color:"#22c55e",cursor:"default"}}>🎉 Video tersimpan di perangkat kamu!</div>
+      <button onClick={reset} style={{background:"none",border:"1px solid rgba(255,255,255,.08)",color:"#666",fontSize:11,cursor:"pointer",padding:"8px",borderRadius:8,fontWeight:600}}>↩ Download Lagi</button>
+    </div>
+  );
+  return null;
+}
+
+function PlayerModal({ clip, ytId, onClose }) {
+  const [tab, setTab] = useState("info");
+  const startS = parseTs(clip.timestamp_start);
+  const endS   = parseTs(clip.timestamp_end);
+  const dur    = Math.max(0, endS - startS);
+  const sc     = clip.viral_score || 78;
+  const scCol  = sc>=90?"#22c55e":sc>=80?"#84cc16":sc>=70?"#c99733":"#fb923c";
+  const tags   = (clip.hashtags||[]).map(h=>h.startsWith("#")?h:"#"+h).join(" ");
+  const desc   = clip.description || "";
+  const copyAll = `${clip.title}\n\n${desc}\n\n${tags}`;
+  const embedUrl = `https://www.youtube.com/embed/${ytId}?start=${startS}&end=${endS}&autoplay=1&rel=0&modestbranding=1`;
+  const safeTitle = (clip.title||"klip").replace(/[^a-zA-Z0-9\s]/g,"").replace(/\s+/g,"_").slice(0,40);
+  const filename = `${safeTitle}_${fmtTs(startS).replace(/:/g,"-")}-${fmtTs(endS).replace(/:/g,"-")}.mp4`;
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,.92)",backdropFilter:"blur(10px)",overflowY:"auto"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{maxWidth:480,margin:"0 auto",background:"#111",minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+        <div style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,.07)",background:"rgba(0,0,0,.6)",backdropFilter:"blur(8px)",position:"sticky",top:0,zIndex:10}}>
+          <span style={{fontSize:13,fontWeight:800,color:"#f0f0f0"}}>📹 Detail Klip</span>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,.08)",border:"none",color:"#aaa",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
         </div>
-
-        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-          <StatCard icon="🎬" value={stats.total} label="Total Project" />
-          <StatCard icon="✅" value={stats.selesai} label="Selesai" color="#22c55e" />
-          <StatCard icon="⚙️" value={stats.proses} label="Sedang Proses" color="#3b82f6" />
-          <StatCard icon="💾" value={stats.storage} label="Storage Terpakai" color="#f59e0b" />
+        <div style={{position:"relative",paddingTop:"56.25%",background:"#000"}}>
+          <iframe src={embedUrl} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}} allowFullScreen allow="autoplay; encrypted-media"/>
         </div>
-
-        <div style={{
-          background: "rgba(245,158,11,0.05)", border: "1px solid rgba(245,158,11,0.2)",
-          borderRadius: 12, padding: "14px 16px", marginBottom: 20,
-          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap"
-        }}>
-          <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>✨ AI Generate Instan</span>
-          <input value={promptText} onChange={e => setPromptText(e.target.value)} onKeyDown={e => e.key === "Enter" && handleGenerate()} placeholder="Deskripsikan klip yang kamu inginkan..." style={{
-            flex: 1, minWidth: 180, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 8, padding: "8px 12px", color: "#e2e8f0", fontSize: 12, outline: "none"
-          }} />
-          <select value={selectedStyle} onChange={e => setSelectedStyle(e.target.value)} style={{
-            background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 8, padding: "8px 10px", color: "#e2e8f0", fontSize: 12, cursor: "pointer"
-          }}>
-            {STYLES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <button onClick={handleGenerate} disabled={generating} style={{
-            padding: "8px 18px", borderRadius: 8, background: generating ? "#78350f" : "#f59e0b",
-            border: "none", color: generating ? "#fbbf24" : "#000", cursor: "pointer", fontWeight: 700, fontSize: 12, whiteSpace: "nowrap"
-          }}>
-            {generating ? `${Math.round(generateProgress)}%` : "✨ Generate"}
-          </button>
-        </div>
-
-        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600, marginRight: 4 }}>Semua Project ({projects.length})</span>
-          {["semua", "selesai", "memproses", "antrian", "gagal"].map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{
-              padding: "4px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500,
-              background: filter === f ? "#f59e0b" : "rgba(255,255,255,0.06)",
-              color: filter === f ? "#000" : "#94a3b8", textTransform: "capitalize"
-            }}>{f.charAt(0).toUpperCase() + f.slice(1)}</button>
+        <div style={{display:"flex",borderBottom:"1px solid rgba(255,255,255,.07)"}}>
+          {[{id:"info",l:"📋 Info"},{id:"copy",l:"✏️ Caption"},{id:"dl",l:"⬇️ Download"}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"11px 4px",background:"none",border:"none",borderBottom:`2px solid ${tab===t.id?"#c99733":"transparent"}`,color:tab===t.id?"#c99733":"#555",fontSize:11,fontWeight:700,cursor:"pointer",transition:"all .15s"}}>{t.l}</button>
           ))}
         </div>
-
-        {filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 20px", color: "#475569" }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🎬</div>
-            <div>Tidak ada project ditemukan</div>
-          </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-            {filtered.map(p => <ProjectCard key={p.id} project={p} onClick={setSelectedProject} />)}
-          </div>
-        )}
+        <div style={{padding:"16px",flex:1}}>
+          {tab==="info" && (
+            <div style={{animation:"fadeUp .2s ease"}}>
+              <div style={{fontSize:14,fontWeight:800,color:"#f0f0f0",lineHeight:1.4,marginBottom:12}}>{clip.title}</div>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {[{l:"Mulai",v:clip.timestamp_start},{l:"Selesai",v:clip.timestamp_end},{l:"Durasi",v:fmtDur(dur)}].map(item=>(
+                  <div key={item.l} style={{flex:1,background:"rgba(201,151,51,.07)",border:"1px solid rgba(201,151,51,.2)",borderRadius:10,padding:"10px 8px",textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"#666",fontWeight:700,textTransform:"uppercase",marginBottom:3}}>{item.l}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:"#c99733",fontFamily:"monospace"}}>{item.v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontSize:11,color:"#666",fontWeight:700,textTransform:"uppercase",letterSpacing:.6}}>🔥 Potensi Viral</span>
+                  <span style={{fontSize:20,fontWeight:900,color:scCol}}>{sc}%</span>
+                </div>
+                <div style={{height:5,borderRadius:3,background:"rgba(255,255,255,.06)",overflow:"hidden",marginBottom:8}}>
+                  <div style={{height:"100%",width:`${sc}%`,background:`linear-gradient(90deg,${scCol}77,${scCol})`,borderRadius:3}}/>
+                </div>
+                <div style={{fontSize:12,color:"#666",lineHeight:1.5}}>{clip.reason||"Klip ini memiliki potensi viral tinggi."}</div>
+              </div>
+              {clip.hook && (
+                <div style={{background:"rgba(201,151,51,.06)",border:"1px solid rgba(201,151,51,.2)",borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{fontSize:9,color:"#888",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>💡 Hook Pembuka</div>
+                  <div style={{fontSize:13,color:"#e0e0e0",fontWeight:600,lineHeight:1.5,fontStyle:"italic"}}>"{clip.hook}"</div>
+                </div>
+              )}
+            </div>
+          )}
+          {tab==="copy" && (
+            <div style={{animation:"fadeUp .2s ease"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",letterSpacing:.6}}>Judul + Caption + Hashtag</span>
+                <CopyBtn text={copyAll} label="Copy Semua"/>
+              </div>
+              <div style={{background:"rgba(201,151,51,.05)",border:"1px solid rgba(201,151,51,.2)",borderRadius:12,padding:"14px",marginBottom:12}}>
+                <div style={{fontSize:14,color:"#f0f0f0",fontWeight:800,lineHeight:1.4,paddingBottom:10,marginBottom:10,borderBottom:"1px solid rgba(255,255,255,.06)"}}>{clip.title}</div>
+                <div style={{fontSize:12,color:"#ccc",lineHeight:1.7,paddingBottom:10,marginBottom:10,borderBottom:"1px solid rgba(255,255,255,.06)"}}>{desc}</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                  {(clip.hashtags||[]).map((h,i)=>(
+                    <span key={i} style={{fontSize:11,color:"#60a5fa",background:"rgba(96,165,250,.07)",border:"1px solid rgba(96,165,250,.15)",borderRadius:5,padding:"2px 8px",fontWeight:600}}>{h.startsWith("#")?h:"#"+h}</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginBottom:12}}>
+                <CopyBtn text={clip.title} label="Judul"/>
+                <CopyBtn text={desc} label="Caption"/>
+                <CopyBtn text={tags} label="Hashtag"/>
+              </div>
+              {clip.thumbnail_text && (
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:10,color:"#666",fontWeight:700,textTransform:"uppercase"}}>🖼 Teks Thumbnail</span>
+                    <CopyBtn text={clip.thumbnail_text} label="Copy"/>
+                  </div>
+                  <div style={{background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:9,padding:"10px 13px",fontSize:13,color:"#e0e0e0",fontWeight:800,letterSpacing:.5}}>{clip.thumbnail_text}</div>
+                </div>
+              )}
+            </div>
+          )}
+          {tab==="dl" && (
+            <div style={{animation:"fadeUp .2s ease"}}>
+              <div style={{background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.06)",borderRadius:10,padding:"10px 12px",marginBottom:14}}>
+                <div style={{fontSize:10,color:"#555",marginBottom:4,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>🎬 Klip yang akan didownload</div>
+                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <span style={{fontSize:12,color:"#c99733",fontFamily:"monospace",fontWeight:700}}>{clip.timestamp_start} → {clip.timestamp_end}</span>
+                  <span style={{fontSize:11,color:"#444"}}>·</span>
+                  <span style={{fontSize:11,color:"#666",fontFamily:"monospace"}}>{fmtDur(dur)}</span>
+                </div>
+              </div>
+              <DownloadBtn ytId={ytId} startS={startS} endS={endS} dur={dur} filename={filename}/>
+              <div style={{marginTop:14,padding:"10px 12px",background:"rgba(255,255,255,.02)",borderRadius:8,border:"1px solid rgba(255,255,255,.05)"}}>
+                <div style={{fontSize:10,color:"#444",lineHeight:1.6}}>
+                  💡 <strong style={{color:"#555"}}>Tips:</strong> Jika download otomatis tidak berhasil, kamu akan diarahkan ke YT Cutter untuk download manual.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    );
+    </div>
+  );
+}
+
+function ClipCard({ clip, ytId, rank, onClick }) {
+  const [hov, setHov] = useState(false);
+  const sc = clip.viral_score || 75;
+  const scCol = sc>=90?"#22c55e":sc>=80?"#84cc16":sc>=70?"#c99733":"#fb923c";
+  const startS = parseTs(clip.timestamp_start);
+  const endS = parseTs(clip.timestamp_end);
+  const dur = Math.max(0, endS - startS);
+  const thumb = `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+
+  return (
+    <div onClick={onClick} onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:hov?"rgba(255,255,255,.06)":"rgba(255,255,255,.025)",border:`1px solid ${hov?"rgba(201,151,51,.4)":"rgba(255,255,255,.07)"}`,borderRadius:14,overflow:"hidden",cursor:"pointer",transition:"all .2s",transform:hov?"translateY(-2px)":"none",animation:"fadeUp .3s ease both",animationDelay:`${rank*0.06}s`}}>
+      <div style={{position:"relative",paddingTop:"52%",background:"#111",overflow:"hidden"}}>
+        <img src={thumb} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.7}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 60%)"}}/>
+        <div style={{position:"absolute",top:8,left:8,background:"rgba(0,0,0,.7)",backdropFilter:"blur(4px)",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:800,color:"#c99733"}}>#{rank+1}</div>
+        <div style={{position:"absolute",top:8,right:8,background:`${scCol}22`,border:`1px solid ${scCol}55`,backdropFilter:"blur(4px)",borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:900,color:scCol}}>{sc}%</div>
+        <div style={{position:"absolute",bottom:8,left:8,background:"rgba(0,0,0,.7)",backdropFilter:"blur(4px)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#ddd",fontFamily:"monospace"}}>{fmtTs(startS)} – {fmtTs(endS)}</div>
+        <div style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,.7)",backdropFilter:"blur(4px)",borderRadius:5,padding:"2px 7px",fontSize:10,fontWeight:700,color:"#aaa",fontFamily:"monospace"}}>{fmtDur(dur)}</div>
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,.6)",border:"2px solid rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,opacity:hov?1:0,transition:"opacity .2s"}}>▶</div>
+        </div>
+      </div>
+      <div style={{padding:"12px 14px"}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#e0e0e0",lineHeight:1.4,marginBottom:6,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{clip.title}</div>
+        {clip.hook && <div style={{fontSize:11,color:"#666",fontStyle:"italic",lineHeight:1.4,marginBottom:8,display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical",overflow:"hidden"}}>"{clip.hook}"</div>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+          {(clip.hashtags||[]).slice(0,3).map((h,i)=>(
+            <span key={i} style={{fontSize:10,color:"#60a5fa",background:"rgba(96,165,250,.07)",border:"1px solid rgba(96,165,250,.12)",borderRadius:4,padding:"1px 6px",fontWeight:600}}>{h.startsWith("#")?h:"#"+h}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [url, setUrl]           = useState("");
+  const [ytId, setYtId]         = useState(null);
+  const [category, setCategory] = useState("podcast");
+  const [duration, setDuration] = useState("30-60s");
+  const [resolution, setResolution] = useState("720p");
+  const [clipCount, setClipCount] = useState(5);
+  const [addContext, setAddContext] = useState("");
+  const [useSubtitles, setUseSubtitles] = useState(false);
+  const [phase, setPhase] = useState("idle"); // idle | analyzing | done | error
+  const [clips, setClips]       = useState([]);
+  const [errMsg, setErrMsg]     = useState("");
+  const [selected, setSelected] = useState(null);
+  const [urlErr, setUrlErr]     = useState("");
+
+  const catObj = CATEGORIES.find(c=>c.id===category) || CATEGORIES[0];
+
+  const handleAnalyze = async () => {
+    const id = getYtId(url.trim());
+    if (!id) { setUrlErr("URL YouTube tidak valid. Contoh: https://youtu.be/xxxx"); return; }
+    setUrlErr("");
+    setYtId(id);
+    setPhase("analyzing");
+    setClips([]);
+    setErrMsg("");
+
+    const system = `Kamu adalah AI spesialis konten viral untuk platform ${catObj.label}. Tugasmu menganalisis video YouTube dan menemukan klip terbaik yang berpotensi viral di TikTok, Reels, dan YouTube Shorts.
+
+Selalu balas HANYA dengan JSON array yang valid. Tidak ada teks lain di luar JSON.`;
+
+    const prompt = `Analisis video YouTube dengan ID: ${id}
+Kategori: ${catObj.label} ${catObj.emoji}
+Target durasi klip: ${duration}
+Jumlah klip: ${clipCount}
+${addContext ? `Konteks tambahan: ${addContext}` : ""}
+
+Temukan ${clipCount} momen terbaik yang berpotensi viral. Untuk setiap klip, berikan:
+
+[
+  {
+    "title": "Judul menarik untuk klip (maks 60 karakter)",
+    "timestamp_start": "MM:SS",
+    "timestamp_end": "MM:SS",
+    "viral_score": 85,
+    "reason": "Alasan singkat kenapa klip ini viral (1-2 kalimat)",
+    "hook": "Hook kalimat pembuka yang menarik perhatian",
+    "description": "Caption lengkap untuk posting (2-3 kalimat)",
+    "hashtags": ["#hashtag1", "#hashtag2", "#hashtag3", "#hashtag4", "#hashtag5"],
+    "thumbnail_text": "TEKS THUMBNAIL SINGKAT"
+  }
+]
+
+Pastikan timestamp realistis dan sesuai dengan konten video. Viral score antara 60-98.`;
+
+    try {
+      const raw = await callClaude([{ role:"user", content:prompt }], system, 4000);
+      const parsed = safeJSON(raw);
+      if (!parsed || !Array.isArray(parsed) || parsed.length === 0) throw new Error("Gagal parse JSON dari AI");
+      setClips(parsed);
+      setPhase("done");
+    } catch (e) {
+      setErrMsg(e.message || "Terjadi kesalahan saat menganalisis video.");
+      setPhase("error");
+    }
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#080d14", color: "#e2e8f0", fontFamily: "'DM Sans', system-ui, sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-        * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-        select option { background: #1e293b; }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-        @keyframes notif { from { opacity:0; transform:translateX(100px); } to { opacity:1; transform:translateX(0); } }
-      `}</style>
+    <div style={{minHeight:"100vh",background:"#0d0d0d",color:"#f0f0f0",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
+      <style>{CSS}</style>
 
-      {/* Sidebar */}
-      <div style={{
-        width: 200, background: "rgba(255,255,255,0.02)", borderRight: "1px solid rgba(255,255,255,0.06)",
-        padding: "20px 12px", display: "flex", flexDirection: "column", gap: 4, flexShrink: 0,
-        position: "sticky", top: 0, height: "100vh"
-      }}>
-        <div style={{ padding: "8px 10px 20px", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, background: "#f59e0b", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, boxShadow: "0 0 12px rgba(245,158,11,0.4)" }}>✂</div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: -0.3 }}>Mager<span style={{ color: "#f59e0b" }}>Klip</span></div>
-            <div style={{ fontSize: 9, color: "#475569", letterSpacing: 0.5 }}>AI VIDEO PLATFORM</div>
-          </div>
-        </div>
-
-        {navItems.map(item => (
-          <div key={item.id} onClick={() => setActiveNav(item.id)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, cursor: "pointer",
-            background: activeNav === item.id ? "rgba(245,158,11,0.12)" : "transparent",
-            color: activeNav === item.id ? "#f59e0b" : "#64748b",
-            fontSize: 13, fontWeight: activeNav === item.id ? 600 : 400,
-            transition: "all 0.15s", borderLeft: activeNav === item.id ? "2px solid #f59e0b" : "2px solid transparent"
-          }}>
-            <span style={{ fontSize: 15 }}>{item.icon}</span>
-            {item.label}
-          </div>
-        ))}
-
-        <div style={{ marginTop: "auto", padding: "12px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 11, color: "#64748b" }}>Storage</span>
-            <span style={{ fontSize: 9, background: "rgba(245,158,11,0.15)", color: "#f59e0b", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>FREE</span>
-          </div>
-          <div style={{ background: "rgba(255,255,255,0.06)", borderRadius: 4, height: 4, overflow: "hidden", marginBottom: 6 }}>
-            <div style={{ width: "22%", height: "100%", background: "linear-gradient(90deg,#f59e0b,#fbbf24)", borderRadius: 4 }} />
-          </div>
-          <div style={{ fontSize: 10, color: "#475569" }}>1.02 GB / 5 GB</div>
+      {/* Header */}
+      <div style={{background:"rgba(255,255,255,.02)",borderBottom:"1px solid rgba(255,255,255,.06)",padding:"14px 20px",display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:50,backdropFilter:"blur(10px)"}}>
+        <div style={{width:32,height:32,background:"linear-gradient(135deg,#c99733,#a07828)",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,boxShadow:"0 0 16px rgba(201,151,51,.4)"}}>✂</div>
+        <div>
+          <div style={{fontSize:15,fontWeight:900,letterSpacing:-.3}}>Mager<span style={{color:"#c99733"}}>Klip</span></div>
+          <div style={{fontSize:9,color:"#444",letterSpacing:.5,fontWeight:600}}>AI VIRAL CLIP FINDER</div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ flex: 1, overflowY: "auto", padding: "28px 28px" }}>
-          {renderContent()}
+      <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px 100px"}}>
+
+        {/* URL Input */}
+        <div style={{marginBottom:20}}>
+          <SectionLabel>Link YouTube</SectionLabel>
+          <div style={{display:"flex",gap:8}}>
+            <div style={{flex:1,position:"relative"}}>
+              <input value={url} onChange={e=>{setUrl(e.target.value);setUrlErr("");}} placeholder="https://youtu.be/... atau youtube.com/watch?v=..."
+                style={{width:"100%",background:"rgba(255,255,255,.05)",border:`1px solid ${urlErr?"#ef4444":"rgba(255,255,255,.1)"}`,borderRadius:11,padding:"13px 14px",color:"#f0f0f0",fontSize:13,outline:"none",transition:"border .15s"}}
+                onKeyDown={e=>e.key==="Enter"&&handleAnalyze()}/>
+            </div>
+          </div>
+          {urlErr && <div style={{fontSize:11,color:"#ef4444",marginTop:5}}>{urlErr}</div>}
         </div>
-      </div>
 
-      <Modal project={selectedProject} onClose={() => setSelectedProject(null)} onRetry={handleRetry} onDelete={handleDelete} />
+        {/* Settings */}
+        <div style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,padding:"16px",marginBottom:16}}>
+          <SectionLabel>Pengaturan Analisis</SectionLabel>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <div>
+              <div style={{fontSize:10,color:"#555",marginBottom:5,fontWeight:600}}>Kategori Konten</div>
+              <select value={category} onChange={e=>setCategory(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"9px 10px",color:"#e0e0e0",fontSize:12,cursor:"pointer",outline:"none"}}>
+                {CATEGORIES.map(c=><option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:"#555",marginBottom:5,fontWeight:600}}>Durasi Klip</div>
+              <select value={duration} onChange={e=>setDuration(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"9px 10px",color:"#e0e0e0",fontSize:12,cursor:"pointer",outline:"none"}}>
+                {DURATIONS.map(d=><option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            <div>
+              <div style={{fontSize:10,color:"#555",marginBottom:5,fontWeight:600}}>Jumlah Klip</div>
+              <select value={clipCount} onChange={e=>setClipCount(Number(e.target.value))} style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"9px 10px",color:"#e0e0e0",fontSize:12,cursor:"pointer",outline:"none"}}>
+                {[3,5,7,10].map(n=><option key={n} value={n}>{n} klip</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:"#555",marginBottom:5,fontWeight:600}}>Resolusi</div>
+              <select value={resolution} onChange={e=>setResolution(e.target.value)} style={{width:"100%",background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",borderRadius:8,padding:"9px 10px",color:"#e0e0e0",fontSize:12,cursor:"pointer",outline:"none"}}>
+                {RESOLUTIONS.map(r=><option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:10,color:"#555",marginBottom:5,fontWeight:600}}>Konteks Tambahan (opsional)</div>
+            <input value={addContext} onChange={e=>setAddContext(e.target.value)} placeholder="Contoh: fokus pada momen lucu, bagian Q&A..." style={{width:"100%",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:8,padding:"9px 12px",color:"#ddd",fontSize:12,outline:"none"}}/>
+          </div>
+          <Toggle label="Gunakan subtitle untuk analisis lebih akurat" value={useSubtitles} onChange={setUseSubtitles}/>
+        </div>
 
-      {notification && (
-        <div style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 200,
-          background: "#0f172a", border: `1px solid ${notification.type === "error" ? "rgba(239,68,68,0.4)" : "rgba(34,197,94,0.4)"}`,
-          borderRadius: 12, padding: "12px 18px", fontSize: 13,
-          color: notification.type === "error" ? "#ef4444" : "#e2e8f0",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.5)", animation: "notif 0.3s ease",
-          display: "flex", alignItems: "center", gap: 8, maxWidth: 300
+        {/* Analyze Button */}
+        <button onClick={handleAnalyze} disabled={phase==="analyzing"} style={{
+          width:"100%",padding:"16px",borderRadius:12,border:"none",cursor:phase==="analyzing"?"not-allowed":"pointer",
+          background:phase==="analyzing"?"rgba(201,151,51,.15)":"linear-gradient(135deg,#c99733,#a07828)",
+          color:phase==="analyzing"?"#c99733":"#000",fontWeight:800,fontSize:15,
+          display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+          boxShadow:phase==="analyzing"?"none":"0 4px 24px rgba(201,151,51,.35)",
+          animation:phase==="analyzing"?"none":"glow 3s ease-in-out infinite",
+          marginBottom:24,transition:"all .2s"
         }}>
-          {notification.msg}
-        </div>
-      )}
+          {phase==="analyzing" ? <><Spinner size={18} color="#c99733"/>Menganalisis dengan AI...</> : "✨ Analisis & Temukan Klip Viral"}
+        </button>
+
+        {/* Error */}
+        {phase==="error" && (
+          <div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",borderRadius:12,padding:"14px 16px",marginBottom:20,animation:"fadeUp .3s ease"}}>
+            <div style={{fontSize:13,color:"#ef4444",fontWeight:700,marginBottom:4}}>❌ Analisis Gagal</div>
+            <div style={{fontSize:12,color:"#777"}}>{errMsg}</div>
+          </div>
+        )}
+
+        {/* Results */}
+        {phase==="done" && clips.length > 0 && (
+          <div style={{animation:"fadeUp .3s ease"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:"#f0f0f0"}}>🎯 {clips.length} Klip Viral Ditemukan</div>
+                <div style={{fontSize:11,color:"#555",marginTop:2}}>Tap klip untuk lihat detail & download</div>
+              </div>
+              <div style={{fontSize:10,color:"#666",background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.08)",borderRadius:6,padding:"4px 8px",fontWeight:700}}>{catObj.emoji} {catObj.label}</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {clips.map((clip,i)=>(
+                <ClipCard key={i} clip={clip} ytId={ytId} rank={i} onClick={()=>setSelected(clip)}/>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Idle state hint */}
+        {phase==="idle" && (
+          <div style={{textAlign:"center",padding:"30px 20px",color:"#333"}}>
+            <div style={{fontSize:40,marginBottom:12}}>✂️</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#444",marginBottom:6}}>Paste link YouTube di atas</div>
+            <div style={{fontSize:12,color:"#333",lineHeight:1.6}}>AI akan menemukan momen terbaik dari video kamu yang berpotensi viral di TikTok & Reels</div>
+          </div>
+        )}
+      </div>
+
+      {selected && ytId && <PlayerModal clip={selected} ytId={ytId} onClose={()=>setSelected(null)}/>}
     </div>
   );
 }
