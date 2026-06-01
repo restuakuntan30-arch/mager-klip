@@ -6,6 +6,9 @@ const WHATSAPP_NUMBER = "6282250931638"; // GANTI dengan nomor admin
 const PRICE_MONTHLY = "Rp 49.000";
 const PRICE_YEARLY = "Rp 399.000";
 
+// ⚡ GANTI dengan URL backend Render kamu setelah deploy:
+const BACKEND_URL = "https://mager-klip-backend.onrender.com";
+
 // ============= HELPERS =============
 function getYtId(url) {
   const m = url.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([A-Za-z0-9_-]{11})/);
@@ -73,9 +76,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:#0a0a0a;color:#f0f0f0
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes glow{0%,100%{box-shadow:0 0 20px #c9973355}50%{box-shadow:0 0 40px #c9973388}}
+@keyframes pulse{0%,100%{opacity:.7}50%{opacity:1}}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-thumb{background:#c9973333;border-radius:6px}
-::-webkit-scrollbar-track{background:transparent}
 input,select,textarea,button{font-family:'Plus Jakarta Sans',sans-serif}
 input:focus,select:focus,textarea:focus{outline:none}
 `;
@@ -88,7 +91,7 @@ function CopyBtn({ text, label="Copy" }) {
   const [ok, setOk] = useState(false);
   return (
     <button onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 2000); }}
-      style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${ok?"#22c55e44":"rgba(255,255,255,.1)"}`,background:ok?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",color:ok?"#22c55e":"#777",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,transition:"all .15s",whiteSpace:"nowrap"}}>
+      style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${ok?"#22c55e44":"rgba(255,255,255,.1)"}`,background:ok?"rgba(34,197,94,.1)":"rgba(255,255,255,.05)",color:ok?"#22c55e":"#777",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
       {ok ? "✓ Tersalin" : "📋 " + label}
     </button>
   );
@@ -125,14 +128,11 @@ function AuthScreen() {
             <div style={{fontSize:10,color:"#666",fontWeight:600,letterSpacing:.5}}>AI VIRAL CLIP FINDER</div>
           </div>
         </div>
-
         {phase === "sent" ? (
           <div style={{textAlign:"center"}}>
             <div style={{fontSize:48,marginBottom:16}}>📧</div>
             <div style={{fontSize:18,fontWeight:800,marginBottom:8}}>Cek email kamu!</div>
-            <div style={{fontSize:13,color:"#777",lineHeight:1.6,marginBottom:20}}>
-              Kami mengirim link login ke<br/><span style={{color:"#c99733",fontWeight:700}}>{email}</span><br/>Klik link di email untuk masuk.
-            </div>
+            <div style={{fontSize:13,color:"#777",lineHeight:1.6,marginBottom:20}}>Kami mengirim link login ke<br/><span style={{color:"#c99733",fontWeight:700}}>{email}</span><br/>Klik link di email untuk masuk.</div>
             <button onClick={() => { setPhase("input"); setEmail(""); }} style={{background:"none",border:"1px solid rgba(255,255,255,.1)",color:"#888",borderRadius:8,padding:"8px 16px",fontSize:12,cursor:"pointer"}}>← Email lain</button>
           </div>
         ) : (
@@ -160,84 +160,184 @@ function AuthScreen() {
 }
 
 // =====================================================
-// DOWNLOAD BUTTON — Multi-Option (NEW!)
+// DOWNLOAD BUTTON — DIRECT DOWNLOAD FROM BACKEND!
 // =====================================================
 function DownloadBtn({ ytId, startS, endS, dur }) {
-  const [showOpts, setShowOpts] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [phase, setPhase] = useState("idle"); // idle | warming | downloading | done | error
+  const [progress, setProgress] = useState(0);
+  const [errMsg, setErrMsg] = useState("");
+  const [quality, setQuality] = useState("720");
+  const [showFallback, setShowFallback] = useState(false);
 
   const ytUrl = `https://www.youtube.com/watch?v=${ytId}`;
   const startTs = fmtTs(startS);
   const endTs = fmtTs(endS);
-  const ytdlpCmd = `yt-dlp "${ytUrl}" --download-sections "*${startTs}-${endTs}" -f "bv*+ba/b" --merge-output-format mp4 -o "klip.mp4"`;
 
-  const copyYtdlp = () => {
-    navigator.clipboard?.writeText(ytdlpCmd);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const handleDirectDownload = async () => {
+    setErrMsg("");
+    setShowFallback(false);
+    setPhase("warming");
+    setProgress(0);
+
+    try {
+      // Warm up backend first (in case of cold start)
+      const warmupRes = await fetch(`${BACKEND_URL}/health`, { method: "GET" }).catch(() => null);
+      if (!warmupRes || !warmupRes.ok) {
+        // Server might be cold-starting, wait a bit
+        await new Promise(r => setTimeout(r, 2000));
+      }
+
+      setPhase("downloading");
+      const downloadUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(ytUrl)}&start=${startTs}&end=${endTs}&quality=${quality}`;
+
+      const response = await fetch(downloadUrl);
+
+      if (!response.ok) {
+        let errText = "Download gagal";
+        try {
+          const errData = await response.json();
+          errText = errData.error || errData.details || errText;
+        } catch {}
+        throw new Error(errText);
+      }
+
+      // Get content length for progress
+      const contentLength = response.headers.get("content-length");
+      const total = parseInt(contentLength || "0");
+
+      if (total > 0 && response.body) {
+        // Stream with progress
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          if (total > 0) setProgress(Math.min(100, Math.round((received / total) * 100)));
+        }
+
+        const blob = new Blob(chunks, { type: "video/mp4" });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      } else {
+        // No content length, use blob directly
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+      }
+
+      setPhase("done");
+      setTimeout(() => setPhase("idle"), 4000);
+    } catch (e) {
+      console.error(e);
+      setErrMsg(e.message || "Tidak bisa terhubung ke server download");
+      setPhase("error");
+      setShowFallback(true);
+    }
   };
 
-  if (!showOpts) {
+  const btnPrimary = {display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"14px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:700,fontSize:13,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)"};
+
+  if (phase === "idle") {
     return (
-      <button onClick={() => setShowOpts(true)}
-        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"13px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:700,fontSize:13,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>
-        ⬇️ Download Klip ({fmtDur(dur)})
-      </button>
+      <div>
+        {/* Quality selector */}
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          <span style={{fontSize:10,color:"#666",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,alignSelf:"center",marginRight:4}}>Kualitas:</span>
+          {[{v:"480",l:"480p"},{v:"720",l:"720p HD"},{v:"1080",l:"1080p"}].map(q => (
+            <button key={q.v} onClick={() => setQuality(q.v)} style={{flex:1,padding:"5px 8px",borderRadius:6,border:`1px solid ${quality===q.v?"rgba(201,151,51,.4)":"rgba(255,255,255,.08)"}`,background:quality===q.v?"rgba(201,151,51,.12)":"transparent",color:quality===q.v?"#c99733":"#666",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{q.l}</button>
+          ))}
+        </div>
+        <button onClick={handleDirectDownload} style={btnPrimary}>
+          ⬇️ Download Langsung ({fmtDur(dur)})
+        </button>
+        <div style={{fontSize:10,color:"#444",textAlign:"center",marginTop:8,lineHeight:1.5}}>
+          ✨ Otomatis terpotong sesuai timestamp · File MP4 langsung di-download
+        </div>
+      </div>
     );
   }
 
-  const optStyle = {display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",borderRadius:10,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",textDecoration:"none",fontSize:12,fontWeight:600,cursor:"pointer",marginBottom:8,textAlign:"left",fontFamily:"inherit"};
-
-  return (
-    <div style={{animation:"fadeUp .2s ease"}}>
-      <div style={{fontSize:10,color:"#666",fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.5}}>Pilih cara download:</div>
-
-      {/* Option 1: Cobalt (Recommended) */}
-      <a href={`https://cobalt.tools/?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer"
-        style={{...optStyle,background:"rgba(201,151,51,.08)",borderColor:"rgba(201,151,51,.3)"}}>
-        <span style={{fontSize:22}}>⭐</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{color:"#c99733",fontWeight:800,marginBottom:2}}>Cobalt.tools (Rekomen)</div>
-          <div style={{color:"#888",fontSize:10,lineHeight:1.4}}>Cepat, tanpa iklan, kualitas HD</div>
+  if (phase === "warming") {
+    return (
+      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.25)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <Spinner color="#c99733" size={18}/>
+          <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Menyalakan server...</span>
         </div>
-        <span style={{fontSize:14,color:"#c99733"}}>→</span>
-      </a>
-
-      {/* Option 2: SaveTube */}
-      <a href={`https://savetube.me/download?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer" style={optStyle}>
-        <span style={{fontSize:22}}>⚡</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:800,marginBottom:2}}>SaveTube</div>
-          <div style={{color:"#666",fontSize:10,lineHeight:1.4}}>Populer di Indonesia, gratis</div>
-        </div>
-        <span style={{fontSize:14,color:"#666"}}>→</span>
-      </a>
-
-      {/* Option 3: yt-dlp (Pro - Auto Cut!) */}
-      <button onClick={copyYtdlp} style={{...optStyle,background:copied?"rgba(34,197,94,.08)":"rgba(255,255,255,.03)",borderColor:copied?"rgba(34,197,94,.3)":"rgba(255,255,255,.08)"}}>
-        <span style={{fontSize:22}}>💻</span>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:800,marginBottom:2,color:copied?"#22c55e":"#fff"}}>{copied ? "✓ Command Disalin!" : "yt-dlp (Pro — Auto Cut!)"}</div>
-          <div style={{color:copied?"#22c55e88":"#666",fontSize:10,lineHeight:1.4}}>Otomatis potong sesuai timestamp</div>
-        </div>
-      </button>
-
-      {copied && (
-        <div style={{background:"rgba(34,197,94,.06)",border:"1px solid rgba(34,197,94,.2)",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:10,color:"#86efac",lineHeight:1.5}}>
-          💡 Command sudah tersalin. Buka <strong>Terminal/CMD</strong>, paste, tekan Enter. Belum install yt-dlp? Baca panduan di menu Help.
-        </div>
-      )}
-
-      <div style={{display:"flex",gap:6,marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,.05)"}}>
-        <a href={`${ytUrl}&t=${startS}s`} target="_blank" rel="noopener noreferrer" style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"#888",fontSize:10,fontWeight:600,textAlign:"center",textDecoration:"none",cursor:"pointer"}}>
-          👀 Preview YouTube
-        </a>
-        <button onClick={() => setShowOpts(false)} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"transparent",color:"#888",fontSize:10,fontWeight:600,textAlign:"center",cursor:"pointer",fontFamily:"inherit"}}>
-          ✕ Tutup
-        </button>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Server gratis butuh ~30 detik untuk bangun pertama kali. Sabar ya...</div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (phase === "downloading") {
+    return (
+      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.25)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Spinner color="#c99733" size={18}/>
+            <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Memproses video...</span>
+          </div>
+          {progress > 0 && <span style={{fontSize:13,fontWeight:900,color:"#c99733"}}>{progress}%</span>}
+        </div>
+        <div style={{height:6,background:"rgba(255,255,255,.05)",borderRadius:3,overflow:"hidden",marginBottom:8}}>
+          <div style={{height:"100%",background:"linear-gradient(90deg,#c99733,#a07828)",width:`${progress || 5}%`,borderRadius:3,transition:"width .3s",animation:progress===0?"pulse 1.5s ease-in-out infinite":"none"}}/>
+        </div>
+        <div style={{fontSize:10,color:"#888",lineHeight:1.5}}>Server sedang download + potong video. Jangan tutup tab ini ⚠️</div>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease",textAlign:"center"}}>
+        <div style={{fontSize:24,marginBottom:6}}>🎉</div>
+        <div style={{fontSize:14,fontWeight:800,color:"#22c55e",marginBottom:4}}>Download Selesai!</div>
+        <div style={{fontSize:11,color:"#666"}}>File MP4 sudah tersimpan di folder Downloads</div>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div>
+        <div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.25)",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>❌ Download gagal</div>
+          <div style={{fontSize:11,color:"#999",lineHeight:1.5,wordBreak:"break-word"}}>{errMsg}</div>
+        </div>
+        <button onClick={handleDirectDownload} style={{...btnPrimary,background:"rgba(201,151,51,.12)",color:"#c99733",border:"1px solid rgba(201,151,51,.3)",boxShadow:"none",marginBottom:8}}>
+          🔄 Coba Lagi
+        </button>
+        {showFallback && (
+          <>
+            <div style={{fontSize:10,color:"#666",textAlign:"center",marginBottom:8}}>Atau pakai layanan alternatif:</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              <a href={`https://cobalt.tools/?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer" style={{padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",fontSize:11,fontWeight:600,textAlign:"center",textDecoration:"none"}}>⭐ Cobalt</a>
+              <a href={`${ytUrl}&t=${startS}s`} target="_blank" rel="noopener noreferrer" style={{padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",fontSize:11,fontWeight:600,textAlign:"center",textDecoration:"none"}}>👀 YouTube</a>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // =====================================================
@@ -393,10 +493,10 @@ function ClipFinderView({ profile, onAnalysisSaved, restoreData }) {
 
   const handleAnalyze = async () => {
     const id = getYtId(url.trim());
-    if (!id) { setUrlErr("URL YouTube tidak valid. Contoh: https://youtu.be/xxxx"); return; }
+    if (!id) { setUrlErr("URL YouTube tidak valid"); return; }
     setUrlErr(""); setYtId(id); setPhase("analyzing"); setClips([]); setErrMsg("");
 
-    const system = `Kamu adalah AI spesialis konten viral untuk platform ${catObj.label}. Tugasmu menganalisis video YouTube dan menemukan klip terbaik yang berpotensi viral di TikTok, Reels, dan YouTube Shorts. Selalu balas HANYA dengan JSON array yang valid. Tidak ada teks lain.`;
+    const system = `Kamu adalah AI spesialis konten viral untuk platform ${catObj.label}. Tugasmu menganalisis video YouTube dan menemukan klip terbaik yang berpotensi viral di TikTok, Reels, dan YouTube Shorts. Selalu balas HANYA dengan JSON array yang valid.`;
     const prompt = `Analisis video YouTube dengan ID: ${id}
 Kategori: ${catObj.label} ${catObj.emoji}
 Target durasi klip: ${duration}
@@ -404,7 +504,7 @@ Jumlah klip: ${clipCount}
 ${addContext ? `Konteks: ${addContext}` : ""}
 
 Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
-[{"title":"...","timestamp_start":"MM:SS","timestamp_end":"MM:SS","viral_score":85,"reason":"...","hook":"...","description":"...","hashtags":["#tag1","#tag2"],"thumbnail_text":"..."}]`;
+[{"title":"...","timestamp_start":"MM:SS","timestamp_end":"MM:SS","viral_score":85,"reason":"...","hook":"...","description":"...","hashtags":["#tag1"],"thumbnail_text":"..."}]`;
 
     try {
       const raw = await callAI([{role:"user",content:prompt}], system);
@@ -413,7 +513,7 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
       setClips(parsed); setPhase("done");
       await onAnalysisSaved({ yt_id: id, url, category, duration, clips: parsed });
     } catch (e) {
-      setErrMsg(e.message || "Terjadi kesalahan."); setPhase("error");
+      setErrMsg(e.message || "Error"); setPhase("error");
     }
   };
 
@@ -423,7 +523,7 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
     <>
       <div style={{padding:"48px 40px 32px",textAlign:"center",background:"linear-gradient(180deg,rgba(201,151,51,.05) 0%,transparent 100%)",borderBottom:"1px solid rgba(255,255,255,.05)"}}>
         <div style={{fontSize:32,fontWeight:900,marginBottom:8,lineHeight:1.2}}>Satu Video,<br/><span style={{color:"#c99733"}}>Puluhan Klip Viral!</span></div>
-        <div style={{fontSize:14,color:"#555",marginBottom:28}}>Paste link YouTube → AI analisis → Temukan momen terbaik</div>
+        <div style={{fontSize:14,color:"#555",marginBottom:28}}>Paste link YouTube → AI analisis → Download langsung</div>
         <div style={{maxWidth:640,margin:"0 auto",display:"flex",gap:10,marginBottom:12}}>
           <input value={url} onChange={e=>{setUrl(e.target.value);setUrlErr("");}} placeholder="https://www.youtube.com/watch?v=..." onKeyDown={e=>e.key==="Enter"&&handleAnalyze()}
             style={{flex:1,background:"rgba(255,255,255,.06)",border:`1px solid ${urlErr?"#ef4444":"rgba(255,255,255,.12)"}`,borderRadius:12,padding:"14px 16px",color:"#f0f0f0",fontSize:14}}/>
@@ -442,14 +542,8 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
           <input value={addContext} onChange={e=>setAddContext(e.target.value)} placeholder="Konteks tambahan (opsional)..." style={{flex:1,minWidth:180,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.08)",borderRadius:8,padding:"8px 12px",color:"#ddd",fontSize:12}}/>
         </div>
       </div>
-
       <div style={{padding:"28px 40px",flex:1}}>
-        {phase==="error" && (
-          <div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",borderRadius:12,padding:"14px 16px",maxWidth:800,margin:"0 auto 20px"}}>
-            <div style={{fontSize:13,color:"#ef4444",fontWeight:700,marginBottom:4}}>❌ Analisis Gagal</div>
-            <div style={{fontSize:12,color:"#777"}}>{errMsg}</div>
-          </div>
-        )}
+        {phase==="error" && (<div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",borderRadius:12,padding:"14px 16px",maxWidth:800,margin:"0 auto 20px"}}><div style={{fontSize:13,color:"#ef4444",fontWeight:700,marginBottom:4}}>❌ Analisis Gagal</div><div style={{fontSize:12,color:"#777"}}>{errMsg}</div></div>)}
         {phase==="done" && clips.length > 0 && (
           <div style={{maxWidth:1000,margin:"0 auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -464,20 +558,8 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
             </div>
           </div>
         )}
-        {phase==="idle" && (
-          <div style={{textAlign:"center",padding:"60px 20px",maxWidth:500,margin:"0 auto"}}>
-            <div style={{fontSize:48,marginBottom:16}}>✂️</div>
-            <div style={{fontSize:16,fontWeight:700,color:"#444",marginBottom:8}}>Paste link YouTube di atas</div>
-            <div style={{fontSize:13,color:"#333",lineHeight:1.7}}>AI akan menemukan momen terbaik untuk TikTok, Reels & Shorts.</div>
-          </div>
-        )}
-        {phase==="analyzing" && (
-          <div style={{textAlign:"center",padding:"60px 20px",maxWidth:400,margin:"0 auto"}}>
-            <Spinner size={40} color="#c99733"/>
-            <div style={{fontSize:15,fontWeight:700,marginTop:16,marginBottom:8}}>AI sedang menganalisis...</div>
-            <div style={{fontSize:12,color:"#555"}}>Mencari momen terbaik dari video kamu</div>
-          </div>
-        )}
+        {phase==="idle" && (<div style={{textAlign:"center",padding:"60px 20px",maxWidth:500,margin:"0 auto"}}><div style={{fontSize:48,marginBottom:16}}>✂️</div><div style={{fontSize:16,fontWeight:700,color:"#444",marginBottom:8}}>Paste link YouTube di atas</div><div style={{fontSize:13,color:"#333",lineHeight:1.7}}>AI akan menemukan momen terbaik, lalu kamu bisa download langsung dari sini.</div></div>)}
+        {phase==="analyzing" && (<div style={{textAlign:"center",padding:"60px 20px",maxWidth:400,margin:"0 auto"}}><Spinner size={40} color="#c99733"/><div style={{fontSize:15,fontWeight:700,marginTop:16,marginBottom:8}}>AI sedang menganalisis...</div><div style={{fontSize:12,color:"#555"}}>Mencari momen terbaik dari video kamu</div></div>)}
       </div>
       {selected && ytId && <PlayerModal clip={selected} ytId={ytId} onClose={()=>setSelected(null)}/>}
     </>
@@ -485,32 +567,19 @@ Temukan ${clipCount} momen terbaik. Balas HANYA JSON array:
 }
 
 // =====================================================
-// CLIPS SAYA
+// CLIPS SAYA / LEADERBOARD / PRO / UPGRADE / SIDEBAR (sama seperti sebelumnya)
 // =====================================================
 function ClipsSayaView({ history, loading, onSelect, onDelete }) {
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:1000,margin:"0 auto"}}>
-        <div style={{marginBottom:24}}>
-          <div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🎬 Clips Saya</div>
-          <div style={{fontSize:13,color:"#555"}}>Semua analisis yang pernah kamu buat</div>
-        </div>
-        {loading ? (
-          <div style={{textAlign:"center",padding:60}}><Spinner size={32}/></div>
-        ) : history.length === 0 ? (
-          <div style={{textAlign:"center",padding:"60px 20px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16}}>
-            <div style={{fontSize:48,marginBottom:16,opacity:.4}}>📭</div>
-            <div style={{fontSize:15,fontWeight:700,color:"#666",marginBottom:6}}>Belum ada history</div>
-            <div style={{fontSize:12,color:"#444"}}>Mulai analisis video pertama kamu di menu Clip Finder</div>
-          </div>
-        ) : (
+        <div style={{marginBottom:24}}><div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🎬 Clips Saya</div><div style={{fontSize:13,color:"#555"}}>Semua analisis yang pernah kamu buat</div></div>
+        {loading ? (<div style={{textAlign:"center",padding:60}}><Spinner size={32}/></div>) : history.length === 0 ? (<div style={{textAlign:"center",padding:"60px 20px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16}}><div style={{fontSize:48,marginBottom:16,opacity:.4}}>📭</div><div style={{fontSize:15,fontWeight:700,color:"#666",marginBottom:6}}>Belum ada history</div><div style={{fontSize:12,color:"#444"}}>Mulai analisis video di menu Clip Finder</div></div>) : (
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
             {history.map((item,i) => {
               const cat = CATEGORIES.find(c=>c.id===item.category) || CATEGORIES[0];
               return (
-                <div key={item.id} onClick={()=>onSelect(item)} style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,overflow:"hidden",cursor:"pointer",transition:"all .2s"}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,151,51,.4)"}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.07)"}>
+                <div key={item.id} onClick={()=>onSelect(item)} style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,overflow:"hidden",cursor:"pointer",transition:"all .2s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="rgba(201,151,51,.4)"} onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,.07)"}>
                   <div style={{position:"relative",paddingTop:"52%",background:"#111"}}>
                     <img src={`https://img.youtube.com/vi/${item.yt_id}/mqdefault.jpg`} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",opacity:.7}}/>
                     <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.85),transparent 50%)"}}/>
@@ -519,10 +588,7 @@ function ClipsSayaView({ history, loading, onSelect, onDelete }) {
                   </div>
                   <div style={{padding:"12px 14px"}}>
                     <div style={{fontSize:13,fontWeight:700,marginBottom:6,display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical",overflow:"hidden",color:"#ddd"}}>{item.url.replace(/^https?:\/\/(www\.)?/,"").slice(0,40)}...</div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div style={{fontSize:10,color:"#555"}}>{timeAgo(item.created_at)}</div>
-                      <button onClick={e=>{e.stopPropagation();if(window.confirm("Hapus history ini?"))onDelete(item.id);}} style={{background:"none",border:"none",color:"#444",cursor:"pointer",fontSize:11,padding:4}}>🗑</button>
-                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontSize:10,color:"#555"}}>{timeAgo(item.created_at)}</div><button onClick={e=>{e.stopPropagation();if(window.confirm("Hapus history ini?"))onDelete(item.id);}} style={{background:"none",border:"none",color:"#444",cursor:"pointer",fontSize:11,padding:4}}>🗑</button></div>
                   </div>
                 </div>
               );
@@ -534,27 +600,14 @@ function ClipsSayaView({ history, loading, onSelect, onDelete }) {
   );
 }
 
-// =====================================================
-// LEADERBOARD
-// =====================================================
 function LeaderboardView({ history }) {
   const allClips = history.flatMap(h => h.clips.map(c => ({ ...c, yt_id: h.yt_id, category: h.category })));
   const top = allClips.sort((a,b) => (b.viral_score||0) - (a.viral_score||0)).slice(0, 20);
-
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:900,margin:"0 auto"}}>
-        <div style={{marginBottom:24}}>
-          <div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🏆 Leaderboard</div>
-          <div style={{fontSize:13,color:"#555"}}>Top 20 klip terbaikmu dengan potensi viral tertinggi</div>
-        </div>
-        {top.length === 0 ? (
-          <div style={{textAlign:"center",padding:"60px 20px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16}}>
-            <div style={{fontSize:48,marginBottom:16,opacity:.4}}>🏆</div>
-            <div style={{fontSize:15,fontWeight:700,color:"#666"}}>Belum ada klip di leaderboard</div>
-            <div style={{fontSize:12,color:"#444",marginTop:6}}>Analisis video dulu untuk muncul di sini</div>
-          </div>
-        ) : (
+        <div style={{marginBottom:24}}><div style={{fontSize:24,fontWeight:900,marginBottom:6}}>🏆 Leaderboard</div><div style={{fontSize:13,color:"#555"}}>Top 20 klip terbaikmu dengan potensi viral tertinggi</div></div>
+        {top.length === 0 ? (<div style={{textAlign:"center",padding:"60px 20px",background:"rgba(255,255,255,.02)",border:"1px solid rgba(255,255,255,.05)",borderRadius:16}}><div style={{fontSize:48,marginBottom:16,opacity:.4}}>🏆</div><div style={{fontSize:15,fontWeight:700,color:"#666"}}>Belum ada klip di leaderboard</div><div style={{fontSize:12,color:"#444",marginTop:6}}>Analisis video dulu untuk muncul di sini</div></div>) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {top.map((clip,i) => {
               const sc = clip.viral_score || 75;
@@ -564,14 +617,8 @@ function LeaderboardView({ history }) {
                 <div key={i} style={{background:i<3?"rgba(201,151,51,.08)":"rgba(255,255,255,.025)",border:`1px solid ${i<3?"rgba(201,151,51,.3)":"rgba(255,255,255,.07)"}`,borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",gap:14}}>
                   <div style={{fontSize:i<3?24:18,fontWeight:900,minWidth:36,textAlign:"center",color:i<3?"#c99733":"#555"}}>{i<3?medals[i]:`#${i+1}`}</div>
                   <img src={`https://img.youtube.com/vi/${clip.yt_id}/default.jpg`} alt="" style={{width:80,height:50,objectFit:"cover",borderRadius:6,opacity:.85}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:700,marginBottom:3,display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{clip.title}</div>
-                    <div style={{fontSize:10,color:"#666",fontFamily:"monospace"}}>{clip.timestamp_start} → {clip.timestamp_end}</div>
-                  </div>
-                  <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:20,fontWeight:900,color:scCol}}>{sc}%</div>
-                    <div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase"}}>Viral Score</div>
-                  </div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:700,marginBottom:3,display:"-webkit-box",WebkitLineClamp:1,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{clip.title}</div><div style={{fontSize:10,color:"#666",fontFamily:"monospace"}}>{clip.timestamp_start} → {clip.timestamp_end}</div></div>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:20,fontWeight:900,color:scCol}}>{sc}%</div><div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase"}}>Viral Score</div></div>
                 </div>
               );
             })}
@@ -582,21 +629,9 @@ function LeaderboardView({ history }) {
   );
 }
 
-// =====================================================
-// PRO LOCK VIEW
-// =====================================================
 function ProLockView({ title, icon, description, features, profile, onUpgrade }) {
   const isPro = profile?.plan === "pro";
-  if (isPro) {
-    return (
-      <div style={{padding:"60px 40px",textAlign:"center"}}>
-        <div style={{fontSize:48,marginBottom:16}}>{icon}</div>
-        <div style={{fontSize:22,fontWeight:900,marginBottom:8}}>{title}</div>
-        <div style={{fontSize:14,color:"#666",marginBottom:24}}>Fitur ini sedang dalam pengembangan untuk pengguna PRO.</div>
-        <div style={{maxWidth:400,margin:"0 auto",background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:12,padding:"14px 18px",fontSize:12,color:"#22c55e"}}>✨ Kamu adalah pengguna PRO — fitur ini akan tersedia dalam update mendatang.</div>
-      </div>
-    );
-  }
+  if (isPro) return (<div style={{padding:"60px 40px",textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>{icon}</div><div style={{fontSize:22,fontWeight:900,marginBottom:8}}>{title}</div><div style={{fontSize:14,color:"#666",marginBottom:24}}>Fitur ini sedang dalam pengembangan.</div><div style={{maxWidth:400,margin:"0 auto",background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:12,padding:"14px 18px",fontSize:12,color:"#22c55e"}}>✨ Kamu pengguna PRO — fitur ini segera tersedia.</div></div>);
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:600,margin:"0 auto"}}>
@@ -607,7 +642,7 @@ function ProLockView({ title, icon, description, features, profile, onUpgrade })
           <div style={{fontSize:14,color:"#888",marginBottom:24,lineHeight:1.6}}>{description}</div>
           <div style={{textAlign:"left",background:"rgba(0,0,0,.3)",borderRadius:12,padding:"16px 20px",marginBottom:24}}>
             <div style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",marginBottom:10,letterSpacing:.5}}>Yang Kamu Dapat:</div>
-            {features.map((f,i) => (<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,fontSize:13,color:"#ccc"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}
+            {features.map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:8,fontSize:13,color:"#ccc"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}
           </div>
           <button onClick={onUpgrade} style={{background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:12,padding:"14px 32px",fontSize:14,fontWeight:900,cursor:"pointer",boxShadow:"0 4px 20px rgba(201,151,51,.4)",animation:"glow 3s ease-in-out infinite"}}>🚀 Upgrade ke PRO</button>
         </div>
@@ -616,34 +651,16 @@ function ProLockView({ title, icon, description, features, profile, onUpgrade })
   );
 }
 
-// =====================================================
-// UPGRADE VIEW
-// =====================================================
 function UpgradeView({ profile }) {
   const [tab, setTab] = useState("monthly");
   const isPro = profile?.plan === "pro";
   const waMsg = encodeURIComponent(`Halo Admin MagerKlip, saya mau upgrade ke PRO.\n\nEmail: ${profile?.email}\nPaket: ${tab === "monthly" ? "Bulanan ("+PRICE_MONTHLY+")" : "Tahunan ("+PRICE_YEARLY+")"}\n\nMohon info pembayaran. Terima kasih!`);
   const waUrl = `https://wa.me/${WHATSAPP_NUMBER}?text=${waMsg}`;
-
-  if (isPro) {
-    return (
-      <div style={{padding:"60px 40px",textAlign:"center"}}>
-        <div style={{maxWidth:500,margin:"0 auto",background:"linear-gradient(135deg,rgba(34,197,94,.1),rgba(34,197,94,.02))",border:"1px solid rgba(34,197,94,.3)",borderRadius:20,padding:"40px 32px"}}>
-          <div style={{fontSize:48,marginBottom:16}}>👑</div>
-          <div style={{fontSize:24,fontWeight:900,marginBottom:10}}>Kamu Sudah PRO!</div>
-          <div style={{fontSize:14,color:"#888",lineHeight:1.6,marginBottom:20}}>Terima kasih sudah mendukung MagerKlip. Nikmati semua fitur PRO tanpa batas.</div>
-          {profile.pro_until && (<div style={{background:"rgba(0,0,0,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#aaa"}}>Aktif sampai: <strong style={{color:"#22c55e"}}>{new Date(profile.pro_until).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</strong></div>)}
-        </div>
-      </div>
-    );
-  }
+  if (isPro) return (<div style={{padding:"60px 40px",textAlign:"center"}}><div style={{maxWidth:500,margin:"0 auto",background:"linear-gradient(135deg,rgba(34,197,94,.1),rgba(34,197,94,.02))",border:"1px solid rgba(34,197,94,.3)",borderRadius:20,padding:"40px 32px"}}><div style={{fontSize:48,marginBottom:16}}>👑</div><div style={{fontSize:24,fontWeight:900,marginBottom:10}}>Kamu Sudah PRO!</div><div style={{fontSize:14,color:"#888",lineHeight:1.6,marginBottom:20}}>Terima kasih sudah mendukung MagerKlip.</div>{profile.pro_until && (<div style={{background:"rgba(0,0,0,.3)",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#aaa"}}>Aktif sampai: <strong style={{color:"#22c55e"}}>{new Date(profile.pro_until).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"})}</strong></div>)}</div></div>);
   return (
     <div style={{padding:"32px 40px",flex:1}}>
       <div style={{maxWidth:900,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:32,fontWeight:900,marginBottom:8}}>Upgrade ke <span style={{color:"#c99733"}}>PRO</span></div>
-          <div style={{fontSize:14,color:"#666"}}>Akses unlimited semua fitur premium MagerKlip</div>
-        </div>
+        <div style={{textAlign:"center",marginBottom:32}}><div style={{fontSize:32,fontWeight:900,marginBottom:8}}>Upgrade ke <span style={{color:"#c99733"}}>PRO</span></div><div style={{fontSize:14,color:"#666"}}>Akses unlimited semua fitur premium</div></div>
         <div style={{display:"flex",justifyContent:"center",marginBottom:24}}>
           <div style={{display:"flex",background:"rgba(255,255,255,.04)",borderRadius:10,padding:4}}>
             <button onClick={()=>setTab("monthly")} style={{padding:"8px 20px",borderRadius:8,border:"none",background:tab==="monthly"?"#c99733":"transparent",color:tab==="monthly"?"#000":"#888",fontSize:12,fontWeight:700,cursor:"pointer"}}>Bulanan</button>
@@ -652,34 +669,22 @@ function UpgradeView({ profile }) {
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,maxWidth:780,margin:"0 auto"}}>
           <div style={{background:"rgba(255,255,255,.025)",border:"1px solid rgba(255,255,255,.07)",borderRadius:16,padding:"24px 28px"}}>
-            <div style={{fontSize:11,color:"#666",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Free</div>
-            <div style={{fontSize:32,fontWeight:900,marginBottom:4}}>Rp 0</div>
-            <div style={{fontSize:11,color:"#555",marginBottom:20}}>Selamanya</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {["5 analisis per hari","Maksimal 5 klip per video","Akses Clip Finder","History 7 hari terakhir"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#999"}}><span style={{color:"#666"}}>✓</span> {f}</div>))}
-            </div>
+            <div style={{fontSize:11,color:"#666",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Free</div><div style={{fontSize:32,fontWeight:900,marginBottom:4}}>Rp 0</div><div style={{fontSize:11,color:"#555",marginBottom:20}}>Selamanya</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>{["5 analisis per hari","Maksimal 5 klip per video","Download langsung dari website","History 7 hari"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#999"}}><span style={{color:"#666"}}>✓</span> {f}</div>))}</div>
             <button disabled style={{width:"100%",padding:"12px",borderRadius:10,border:"1px solid rgba(255,255,255,.1)",background:"transparent",color:"#555",fontSize:12,fontWeight:700,cursor:"not-allowed"}}>Paket Saat Ini</button>
           </div>
           <div style={{background:"linear-gradient(135deg,rgba(201,151,51,.12),rgba(201,151,51,.03))",border:"2px solid rgba(201,151,51,.5)",borderRadius:16,padding:"24px 28px",position:"relative"}}>
             <div style={{position:"absolute",top:-10,right:20,background:"#c99733",color:"#000",padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:900,letterSpacing:.5}}>👑 RECOMMENDED</div>
-            <div style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Pro</div>
-            <div style={{fontSize:32,fontWeight:900,marginBottom:4,color:"#c99733"}}>{tab==="monthly"?PRICE_MONTHLY:PRICE_YEARLY}</div>
-            <div style={{fontSize:11,color:"#888",marginBottom:20}}>per {tab==="monthly"?"bulan":"tahun"}</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
-              {["Unlimited analisis","Maksimal 10 klip per video","Penjadwalan otomatis ke sosmed","Connect akun TikTok, IG, YouTube","History permanen","Priority support","Akses fitur baru duluan"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#ddd"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}
-            </div>
+            <div style={{fontSize:11,color:"#c99733",fontWeight:700,textTransform:"uppercase",marginBottom:8}}>Pro</div><div style={{fontSize:32,fontWeight:900,marginBottom:4,color:"#c99733"}}>{tab==="monthly"?PRICE_MONTHLY:PRICE_YEARLY}</div><div style={{fontSize:11,color:"#888",marginBottom:20}}>per {tab==="monthly"?"bulan":"tahun"}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>{["Unlimited analisis","Maksimal 10 klip per video","Download HD 1080p","Penjadwalan otomatis","Akun sosmed unlimited","History permanen","Priority support"].map((f,i)=>(<div key={i} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12,color:"#ddd"}}><span style={{color:"#22c55e",fontWeight:900}}>✓</span> {f}</div>))}</div>
             <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",width:"100%",padding:"12px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",fontSize:13,fontWeight:900,cursor:"pointer",textDecoration:"none",textAlign:"center",boxShadow:"0 4px 20px rgba(201,151,51,.3)"}}>💬 Order via WhatsApp</a>
           </div>
         </div>
-        <div style={{textAlign:"center",marginTop:32,fontSize:12,color:"#555",lineHeight:1.7}}>Pembayaran via transfer bank atau e-wallet (DANA, GoPay, OVO)<br/>Akun PRO aktif maksimal 1 jam setelah pembayaran dikonfirmasi.</div>
       </div>
     </div>
   );
 }
 
-// =====================================================
-// SIDEBAR
-// =====================================================
 function Sidebar({ view, setView, profile, onLogout }) {
   const isPro = profile?.plan === "pro";
   const nav = [
@@ -694,10 +699,7 @@ function Sidebar({ view, setView, profile, onLogout }) {
       <div style={{padding:"20px 16px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:34,height:34,background:"linear-gradient(135deg,#c99733,#a07828)",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,boxShadow:"0 0 16px rgba(201,151,51,.4)"}}>✂</div>
-          <div>
-            <div style={{fontSize:16,fontWeight:900,letterSpacing:-.3}}>Mager<span style={{color:"#c99733"}}>Klip</span></div>
-            <div style={{fontSize:9,color:"#444",fontWeight:600,letterSpacing:.5}}>AI VIRAL CLIP FINDER</div>
-          </div>
+          <div><div style={{fontSize:16,fontWeight:900,letterSpacing:-.3}}>Mager<span style={{color:"#c99733"}}>Klip</span></div><div style={{fontSize:9,color:"#444",fontWeight:600,letterSpacing:.5}}>AI VIRAL CLIP FINDER</div></div>
         </div>
       </div>
       <nav style={{padding:"12px 10px",flex:1,display:"flex",flexDirection:"column",gap:2}}>
@@ -711,15 +713,10 @@ function Sidebar({ view, setView, profile, onLogout }) {
         ))}
       </nav>
       <div style={{padding:"12px 10px",borderTop:"1px solid rgba(255,255,255,.06)"}}>
-        {!isPro && (
-          <button onClick={()=>setView("upgrade")} style={{width:"100%",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:800,cursor:"pointer",marginBottom:10,boxShadow:"0 2px 12px rgba(201,151,51,.3)"}}>👑 Upgrade ke PRO</button>
-        )}
+        {!isPro && (<button onClick={()=>setView("upgrade")} style={{width:"100%",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:800,cursor:"pointer",marginBottom:10,boxShadow:"0 2px 12px rgba(201,151,51,.3)"}}>👑 Upgrade ke PRO</button>)}
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:"rgba(255,255,255,.03)",borderRadius:8}}>
           <div style={{width:30,height:30,borderRadius:"50%",background:isPro?"linear-gradient(135deg,#c99733,#a07828)":"#333",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:isPro?"#000":"#aaa",flexShrink:0}}>{profile?.email?.[0]?.toUpperCase() || "?"}</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#ddd",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile?.email}</div>
-            <div style={{fontSize:9,color:isPro?"#c99733":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{isPro?"👑 PRO":"Free Plan"}</div>
-          </div>
+          <div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:"#ddd",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{profile?.email}</div><div style={{fontSize:9,color:isPro?"#c99733":"#555",fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>{isPro?"👑 PRO":"Free Plan"}</div></div>
           <button onClick={onLogout} title="Logout" style={{background:"none",border:"none",color:"#444",cursor:"pointer",fontSize:14,padding:4}}>⎋</button>
         </div>
       </div>
@@ -741,7 +738,7 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => { setSession(session); setLoading(false); });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => { setSession(sess); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => { setSession(sess); });
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -753,10 +750,7 @@ export default function App() {
     })();
   }, [session]);
 
-  useEffect(() => {
-    if (!session) { setHistory([]); return; }
-    loadHistory();
-  }, [session]);
+  useEffect(() => { if (!session) { setHistory([]); return; } loadHistory(); }, [session]);
 
   const loadHistory = async () => {
     setHistoryLoading(true);
@@ -764,35 +758,12 @@ export default function App() {
     setHistory(data || []);
     setHistoryLoading(false);
   };
-
-  const saveAnalysis = async (data) => {
-    if (!session) return;
-    await supabase.from("clip_history").insert({ user_id: session.user.id, ...data });
-    loadHistory();
-  };
-
-  const deleteHistory = async (id) => {
-    await supabase.from("clip_history").delete().eq("id", id);
-    loadHistory();
-  };
-
+  const saveAnalysis = async (data) => { if (!session) return; await supabase.from("clip_history").insert({ user_id: session.user.id, ...data }); loadHistory(); };
+  const deleteHistory = async (id) => { await supabase.from("clip_history").delete().eq("id", id); loadHistory(); };
   const handleSelectHistory = (item) => { setRestoreData(item); setView("finder"); };
+  const handleLogout = async () => { if (window.confirm("Yakin mau logout?")) { await supabase.auth.signOut(); setView("finder"); } };
 
-  const handleLogout = async () => {
-    if (window.confirm("Yakin mau logout?")) {
-      await supabase.auth.signOut();
-      setView("finder");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div style={{minHeight:"100vh",background:"#0a0a0a",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <style>{CSS}</style>
-        <Spinner size={32}/>
-      </div>
-    );
-  }
+  if (loading) return (<div style={{minHeight:"100vh",background:"#0a0a0a",display:"flex",alignItems:"center",justifyContent:"center"}}><style>{CSS}</style><Spinner size={32}/></div>);
   if (!session) return <AuthScreen />;
 
   return (
@@ -803,8 +774,8 @@ export default function App() {
         {view === "finder" && <ClipFinderView profile={profile} onAnalysisSaved={saveAnalysis} restoreData={restoreData}/>}
         {view === "history" && <ClipsSayaView history={history} loading={historyLoading} onSelect={handleSelectHistory} onDelete={deleteHistory}/>}
         {view === "leaderboard" && <LeaderboardView history={history}/>}
-        {view === "scheduler" && <ProLockView title="Penjadwalan Otomatis" icon="📅" description="Jadwalkan posting klip ke TikTok, Instagram Reels, dan YouTube Shorts secara otomatis." features={["Schedule unlimited posting","Multi-platform: TikTok, IG, YouTube","Optimasi jam posting","Analytics performance","Auto-repost untuk konten viral"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
-        {view === "social" && <ProLockView title="Akun Sosial Media" icon="📱" description="Connect dan kelola semua akun sosial media kamu dari satu dashboard." features={["Connect TikTok, Instagram, YouTube","Manage multi-akun dari 1 dashboard","Auto-cross-posting","Performance insights real-time","Caption AI per platform"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
+        {view === "scheduler" && <ProLockView title="Penjadwalan Otomatis" icon="📅" description="Jadwalkan posting klip ke TikTok, Instagram Reels, dan YouTube Shorts otomatis." features={["Schedule unlimited posting","Multi-platform","Optimasi jam posting","Analytics","Auto-repost viral"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
+        {view === "social" && <ProLockView title="Akun Sosial Media" icon="📱" description="Connect dan kelola semua akun sosial media dari satu dashboard." features={["Connect TikTok, IG, YouTube","Multi-akun","Auto-cross-posting","Performance insights","Caption AI per platform"]} profile={profile} onUpgrade={()=>setView("upgrade")}/>}
         {view === "upgrade" && <UpgradeView profile={profile}/>}
       </div>
     </div>
