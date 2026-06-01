@@ -163,153 +163,84 @@ function AuthScreen() {
 // DOWNLOAD BUTTON — DIRECT DOWNLOAD FROM BACKEND!
 // =====================================================
 function DownloadBtn({ ytId, startS, endS, dur }) {
-  const [phase, setPhase] = useState("idle"); // idle | warming | downloading | done | error
-  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
-  const [quality, setQuality] = useState("720");
-  const [showFallback, setShowFallback] = useState(false);
 
   const ytUrl = `https://www.youtube.com/watch?v=${ytId}`;
   const startTs = fmtTs(startS);
   const endTs = fmtTs(endS);
+  const cobaltUrl = `https://cobalt.tools/?url=${encodeURIComponent(ytUrl)}`;
 
-  const handleDirectDownload = async () => {
+  const handleDownload = async () => {
     setErrMsg("");
-    setShowFallback(false);
     setPhase("warming");
-    setProgress(0);
 
     try {
-      // Warm up backend first (in case of cold start)
-      const warmupRes = await fetch(`${BACKEND_URL}/health`, { method: "GET" }).catch(() => null);
-      if (!warmupRes || !warmupRes.ok) {
-        // Server might be cold-starting, wait a bit
-        await new Promise(r => setTimeout(r, 2000));
-      }
+      // Warm up server (wake up kalau tidur)
+      const warmupRes = await Promise.race([
+        fetch(`${BACKEND_URL}/health`),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 90000)),
+      ]).catch(() => null);
+
+      if (!warmupRes || !warmupRes.ok) throw new Error("Server tidak bisa dihubungi");
 
       setPhase("downloading");
-      const downloadUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(ytUrl)}&start=${startTs}&end=${endTs}&quality=${quality}`;
 
-      const response = await fetch(downloadUrl);
+      // Native browser download - work di desktop & mobile
+      const downloadUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(ytUrl)}&start=${startTs}&end=${endTs}`;
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
 
-      if (!response.ok) {
-        let errText = "Download gagal";
-        try {
-          const errData = await response.json();
-          errText = errData.error || errData.details || errText;
-        } catch {}
-        throw new Error(errText);
-      }
-
-      // Get content length for progress
-      const contentLength = response.headers.get("content-length");
-      const total = parseInt(contentLength || "0");
-
-      if (total > 0 && response.body) {
-        // Stream with progress
-        const reader = response.body.getReader();
-        const chunks = [];
-        let received = 0;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          received += value.length;
-          if (total > 0) setProgress(Math.min(100, Math.round((received / total) * 100)));
-        }
-
-        const blob = new Blob(chunks, { type: "video/mp4" });
-        const blobUrl = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-      } else {
-        // No content length, use blob directly
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-      }
-
-      setPhase("done");
-      setTimeout(() => setPhase("idle"), 4000);
+      // Show success setelah delay (browser handle download di background)
+      setTimeout(() => setPhase("done"), 2000);
+      setTimeout(() => setPhase("idle"), 12000);
     } catch (e) {
-      console.error(e);
-      setErrMsg(e.message || "Tidak bisa terhubung ke server download");
+      setErrMsg(e.message || "Gagal terhubung ke server");
       setPhase("error");
-      setShowFallback(true);
     }
   };
 
-  const btnPrimary = {display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"14px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:700,fontSize:13,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)"};
-
-  if (phase === "idle") {
-    return (
-      <div>
-        {/* Quality selector */}
-        <div style={{display:"flex",gap:6,marginBottom:10}}>
-          <span style={{fontSize:10,color:"#666",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,alignSelf:"center",marginRight:4}}>Kualitas:</span>
-          {[{v:"480",l:"480p"},{v:"720",l:"720p HD"},{v:"1080",l:"1080p"}].map(q => (
-            <button key={q.v} onClick={() => setQuality(q.v)} style={{flex:1,padding:"5px 8px",borderRadius:6,border:`1px solid ${quality===q.v?"rgba(201,151,51,.4)":"rgba(255,255,255,.08)"}`,background:quality===q.v?"rgba(201,151,51,.12)":"transparent",color:quality===q.v?"#c99733":"#666",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{q.l}</button>
-          ))}
-        </div>
-        <button onClick={handleDirectDownload} style={btnPrimary}>
-          ⬇️ Download Langsung ({fmtDur(dur)})
-        </button>
-        <div style={{fontSize:10,color:"#444",textAlign:"center",marginTop:8,lineHeight:1.5}}>
-          ✨ Otomatis terpotong sesuai timestamp · File MP4 langsung di-download
-        </div>
-      </div>
-    );
-  }
+  const btnPrimary = {display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"14px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:800,fontSize:14,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)",fontFamily:"inherit"};
 
   if (phase === "warming") {
     return (
-      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.25)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease"}}>
+      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.3)",borderRadius:10,padding:"14px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <Spinner color="#c99733" size={18}/>
           <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Menyalakan server...</span>
         </div>
-        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Server gratis butuh ~30 detik untuk bangun pertama kali. Sabar ya...</div>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Tunggu 30-60 detik (server free tier baru bangun)</div>
       </div>
     );
   }
 
   if (phase === "downloading") {
     return (
-      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.25)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <Spinner color="#c99733" size={18}/>
-            <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Memproses video...</span>
-          </div>
-          {progress > 0 && <span style={{fontSize:13,fontWeight:900,color:"#c99733"}}>{progress}%</span>}
+      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.3)",borderRadius:10,padding:"14px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <Spinner color="#c99733" size={18}/>
+          <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Memproses video...</span>
         </div>
-        <div style={{height:6,background:"rgba(255,255,255,.05)",borderRadius:3,overflow:"hidden",marginBottom:8}}>
-          <div style={{height:"100%",background:"linear-gradient(90deg,#c99733,#a07828)",width:`${progress || 5}%`,borderRadius:3,transition:"width .3s",animation:progress===0?"pulse 1.5s ease-in-out infinite":"none"}}/>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>
+          ⏬ File MP4 akan otomatis tersimpan di Downloads<br/>
+          📱 HP: cek status download di notifikasi browser
         </div>
-        <div style={{fontSize:10,color:"#888",lineHeight:1.5}}>Server sedang download + potong video. Jangan tutup tab ini ⚠️</div>
       </div>
     );
   }
 
   if (phase === "done") {
     return (
-      <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:10,padding:"14px 16px",animation:"fadeUp .3s ease",textAlign:"center"}}>
+      <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:10,padding:"14px",textAlign:"center"}}>
         <div style={{fontSize:24,marginBottom:6}}>🎉</div>
-        <div style={{fontSize:14,fontWeight:800,color:"#22c55e",marginBottom:4}}>Download Selesai!</div>
-        <div style={{fontSize:11,color:"#666"}}>File MP4 sudah tersimpan di folder Downloads</div>
+        <div style={{fontSize:14,fontWeight:800,color:"#22c55e",marginBottom:4}}>Download dimulai!</div>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Cek folder Downloads atau notifikasi browser</div>
+        <button onClick={() => setPhase("idle")} style={{marginTop:10,background:"none",border:"1px solid rgba(255,255,255,.1)",color:"#666",fontSize:10,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>Download lagi</button>
       </div>
     );
   }
@@ -318,28 +249,29 @@ function DownloadBtn({ ytId, startS, endS, dur }) {
     return (
       <div>
         <div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.25)",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>❌ Download gagal</div>
-          <div style={{fontSize:11,color:"#999",lineHeight:1.5,wordBreak:"break-word"}}>{errMsg}</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>❌ Gagal download</div>
+          <div style={{fontSize:11,color:"#888"}}>{errMsg}</div>
         </div>
-        <button onClick={handleDirectDownload} style={{...btnPrimary,background:"rgba(201,151,51,.12)",color:"#c99733",border:"1px solid rgba(201,151,51,.3)",boxShadow:"none",marginBottom:8}}>
-          🔄 Coba Lagi
-        </button>
-        {showFallback && (
-          <>
-            <div style={{fontSize:10,color:"#666",textAlign:"center",marginBottom:8}}>Atau pakai layanan alternatif:</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              <a href={`https://cobalt.tools/?url=${encodeURIComponent(ytUrl)}`} target="_blank" rel="noopener noreferrer" style={{padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",fontSize:11,fontWeight:600,textAlign:"center",textDecoration:"none"}}>⭐ Cobalt</a>
-              <a href={`${ytUrl}&t=${startS}s`} target="_blank" rel="noopener noreferrer" style={{padding:"8px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",background:"rgba(255,255,255,.03)",color:"#ddd",fontSize:11,fontWeight:600,textAlign:"center",textDecoration:"none"}}>👀 YouTube</a>
-            </div>
-          </>
-        )}
+        <button onClick={handleDownload} style={{...btnPrimary,marginBottom:8}}>🔄 Coba Lagi</button>
+        <a href={cobaltUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",padding:"10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",color:"#888",fontSize:11,textDecoration:"none"}}>⭐ Atau pakai Cobalt</a>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div>
+      <div style={{background:"rgba(201,151,51,.07)",border:"1px solid rgba(201,151,51,.2)",borderRadius:10,padding:"10px 12px",marginBottom:12,textAlign:"center"}}>
+        <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>⏱ Segmen</div>
+        <div style={{fontSize:14,color:"#c99733",fontFamily:"monospace",fontWeight:800}}>{startTs} → {endTs} <span style={{color:"#666",fontSize:11}}>({fmtDur(dur)})</span></div>
+      </div>
+      <button onClick={handleDownload} style={btnPrimary}>⬇️ Download Langsung</button>
+      <div style={{fontSize:10,color:"#555",textAlign:"center",marginTop:8,lineHeight:1.5}}>
+        💻 Laptop: file auto save di Downloads<br/>
+        📱 HP: cek notifikasi download browser
+      </div>
+    </div>
+  );
 }
-
 // =====================================================
 // CLIP CARD
 // =====================================================
