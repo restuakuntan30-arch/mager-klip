@@ -7,7 +7,7 @@ const PRICE_MONTHLY = "Rp 49.000";
 const PRICE_YEARLY = "Rp 399.000";
 
 // ⚡ GANTI dengan URL backend Render kamu setelah deploy:
-const BACKEND_URL = "https://mager-klip-backend.onrender.com";
+const BACKEND_URL = "https://mager-klip-backend-xxxx.onrender.com";
 
 // ============= HELPERS =============
 function getYtId(url) {
