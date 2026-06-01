@@ -165,6 +165,7 @@ function AuthScreen() {
 function DownloadBtn({ ytId, startS, endS, dur }) {
   const [phase, setPhase] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
+  const [fallbackUrl, setFallbackUrl] = useState("");
 
   const ytUrl = `https://www.youtube.com/watch?v=${ytId}`;
   const startTs = fmtTs(startS);
@@ -173,51 +174,52 @@ function DownloadBtn({ ytId, startS, endS, dur }) {
 
   const handleDownload = async () => {
     setErrMsg("");
-    setPhase("warming");
+    setFallbackUrl("");
+    setPhase("downloading");
 
     try {
-      // Warm up server (wake up kalau tidur)
-      const warmupRes = await Promise.race([
-        fetch(`${BACKEND_URL}/health`),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 90000)),
-      ]).catch(() => null);
-
-      if (!warmupRes || !warmupRes.ok) throw new Error("Server tidak bisa dihubungi");
-
-      setPhase("downloading");
-
-      // Native browser download - work di desktop & mobile
       const downloadUrl = `${BACKEND_URL}/download?url=${encodeURIComponent(ytUrl)}&start=${startTs}&end=${endTs}`;
+      const response = await fetch(downloadUrl);
+      const contentType = response.headers.get("content-type") || "";
+
+      // Backend return JSON = ada error
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.fallback) {
+          // Auto-open Cobalt fallback
+          setFallbackUrl(data.fallback);
+          setPhase("fallback");
+          // Auto-open in new tab
+          window.open(data.fallback, "_blank");
+          return;
+        }
+        throw new Error(data.error || data.details || "Download gagal");
+      }
+
+      if (!response.ok) throw new Error(`Server error ${response.status}`);
+
+      // Backend return video file
+      const blob = await response.blob();
+      if (blob.size < 10000) throw new Error("File terlalu kecil");
+
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = downloadUrl;
+      a.href = blobUrl;
       a.download = `klip_${ytId}_${startTs.replace(/:/g, "-")}.mp4`;
-      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
 
-      // Show success setelah delay (browser handle download di background)
-      setTimeout(() => setPhase("done"), 2000);
-      setTimeout(() => setPhase("idle"), 12000);
+      setPhase("done");
+      setTimeout(() => setPhase("idle"), 5000);
     } catch (e) {
-      setErrMsg(e.message || "Gagal terhubung ke server");
+      setErrMsg(e.message || "Tidak bisa terhubung ke server");
       setPhase("error");
     }
   };
 
   const btnPrimary = {display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"14px 16px",borderRadius:10,border:"none",width:"100%",fontWeight:800,fontSize:14,cursor:"pointer",background:"linear-gradient(135deg,#c99733,#a07828)",color:"#000",boxShadow:"0 4px 20px rgba(201,151,51,.3)",fontFamily:"inherit"};
-
-  if (phase === "warming") {
-    return (
-      <div style={{background:"rgba(201,151,51,.08)",border:"1px solid rgba(201,151,51,.3)",borderRadius:10,padding:"14px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-          <Spinner color="#c99733" size={18}/>
-          <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Menyalakan server...</span>
-        </div>
-        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Tunggu 30-60 detik (server free tier baru bangun)</div>
-      </div>
-    );
-  }
 
   if (phase === "downloading") {
     return (
@@ -227,9 +229,25 @@ function DownloadBtn({ ytId, startS, endS, dur }) {
           <span style={{fontSize:13,fontWeight:700,color:"#c99733"}}>Memproses video...</span>
         </div>
         <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>
-          ⏬ File MP4 akan otomatis tersimpan di Downloads<br/>
-          📱 HP: cek status download di notifikasi browser
+          ⏳ Tunggu 30-90 detik (kalau server baru bangun, bisa lebih lama)<br/>
+          💡 Jangan tutup tab ini
         </div>
+      </div>
+    );
+  }
+
+  if (phase === "fallback") {
+    return (
+      <div style={{background:"rgba(96,165,250,.08)",border:"1px solid rgba(96,165,250,.3)",borderRadius:10,padding:"14px"}}>
+        <div style={{fontSize:13,fontWeight:800,color:"#60a5fa",marginBottom:6}}>🔄 Pakai Cobalt sebagai gantinya</div>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.6,marginBottom:10}}>
+          YouTube blok video ini dari server. Cobalt sudah otomatis terbuka di tab baru — tinggal klik <strong>Download</strong> di sana.
+        </div>
+        <a href={fallbackUrl || cobaltUrl} target="_blank" rel="noopener noreferrer"
+          style={{display:"block",textAlign:"center",padding:"10px",borderRadius:8,background:"rgba(96,165,250,.15)",color:"#60a5fa",fontSize:12,fontWeight:700,textDecoration:"none",marginBottom:8}}>
+          ⭐ Buka Cobalt lagi (kalau pop-up diblok)
+        </a>
+        <button onClick={() => setPhase("idle")} style={{width:"100%",background:"none",border:"1px solid rgba(255,255,255,.08)",color:"#666",fontSize:11,padding:"8px",borderRadius:8,cursor:"pointer",fontFamily:"inherit"}}>↩ Kembali</button>
       </div>
     );
   }
@@ -238,9 +256,8 @@ function DownloadBtn({ ytId, startS, endS, dur }) {
     return (
       <div style={{background:"rgba(34,197,94,.08)",border:"1px solid rgba(34,197,94,.3)",borderRadius:10,padding:"14px",textAlign:"center"}}>
         <div style={{fontSize:24,marginBottom:6}}>🎉</div>
-        <div style={{fontSize:14,fontWeight:800,color:"#22c55e",marginBottom:4}}>Download dimulai!</div>
-        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>Cek folder Downloads atau notifikasi browser</div>
-        <button onClick={() => setPhase("idle")} style={{marginTop:10,background:"none",border:"1px solid rgba(255,255,255,.1)",color:"#666",fontSize:10,padding:"6px 14px",borderRadius:6,cursor:"pointer",fontFamily:"inherit"}}>Download lagi</button>
+        <div style={{fontSize:14,fontWeight:800,color:"#22c55e",marginBottom:4}}>Download Selesai!</div>
+        <div style={{fontSize:11,color:"#888",lineHeight:1.5}}>File MP4 tersimpan di folder Downloads</div>
       </div>
     );
   }
@@ -249,25 +266,28 @@ function DownloadBtn({ ytId, startS, endS, dur }) {
     return (
       <div>
         <div style={{background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.25)",borderRadius:10,padding:"12px 14px",marginBottom:10}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>❌ Gagal download</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:4}}>❌ Gagal terhubung</div>
           <div style={{fontSize:11,color:"#888"}}>{errMsg}</div>
         </div>
         <button onClick={handleDownload} style={{...btnPrimary,marginBottom:8}}>🔄 Coba Lagi</button>
-        <a href={cobaltUrl} target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",padding:"10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",color:"#888",fontSize:11,textDecoration:"none"}}>⭐ Atau pakai Cobalt</a>
+        <a href={cobaltUrl} target="_blank" rel="noopener noreferrer"
+          style={{display:"block",textAlign:"center",padding:"10px",borderRadius:8,border:"1px solid rgba(255,255,255,.08)",color:"#888",fontSize:11,textDecoration:"none"}}>
+          ⭐ Atau pakai Cobalt langsung
+        </a>
       </div>
     );
   }
 
+  // Idle state
   return (
     <div>
       <div style={{background:"rgba(201,151,51,.07)",border:"1px solid rgba(201,151,51,.2)",borderRadius:10,padding:"10px 12px",marginBottom:12,textAlign:"center"}}>
         <div style={{fontSize:10,color:"#888",fontWeight:700,textTransform:"uppercase",marginBottom:4}}>⏱ Segmen</div>
         <div style={{fontSize:14,color:"#c99733",fontFamily:"monospace",fontWeight:800}}>{startTs} → {endTs} <span style={{color:"#666",fontSize:11}}>({fmtDur(dur)})</span></div>
       </div>
-      <button onClick={handleDownload} style={btnPrimary}>⬇️ Download Langsung</button>
+      <button onClick={handleDownload} style={btnPrimary}>⬇️ Download Klip</button>
       <div style={{fontSize:10,color:"#555",textAlign:"center",marginTop:8,lineHeight:1.5}}>
-        💻 Laptop: file auto save di Downloads<br/>
-        📱 HP: cek notifikasi download browser
+        Server akan coba download langsung. Kalau YouTube blok, otomatis pakai Cobalt.
       </div>
     </div>
   );
